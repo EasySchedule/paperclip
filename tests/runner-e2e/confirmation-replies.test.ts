@@ -57,6 +57,8 @@ describe("confirmation-reply independent oracle", () => {
     expect(() => assertAmbiguousReplyUnresolved({ ...e, cards: [{ id: "a", status: "accepted" }, e.cards[1]!] })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, tasks: [{ id: "unauthorized-task" }] })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Both proposals are approved." })).toThrow();
+    expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "What is the deadline?" })).toThrow();
+    expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Which tone should the welcome note and poster use?" })).toThrow();
   });
   it("accepts a current structured clarification and rejects stale or unrelated question cards", () => {
     const question = { id: "question", kind: "ask_user_questions", status: "pending", createdByAgentId: "planner",
@@ -64,7 +66,7 @@ describe("confirmation-reply independent oracle", () => {
     const evidence = { cards: [{ id: "a", status: "pending" }, { id: "b", status: "pending" }, question], originalIds: ["a", "b"], tasks: [], reply: "",
       agentId: "planner", answerId: "ambiguous-answer" };
     expect(() => assertAmbiguousReplyUnresolved(evidence)).not.toThrow();
-    for (const patch of [{ originCommentIds: ["old-answer"] }, { createdByAgentId: "other-agent" }, { status: "answered" }, { payload: { questions: [] } }]) {
+    for (const patch of [{ originCommentIds: ["old-answer"] }, { createdByAgentId: "other-agent" }, { status: "answered" }, { payload: { questions: [] } }, { payload: { questions: [{ prompt: "What is the deadline?" }] } }, { payload: { questions: [{ prompt: "Which tone should the welcome note and poster use?", options: [{ label: "Warm" }, { label: "Formal" }] }] } }]) {
       expect(() => assertAmbiguousReplyUnresolved({ ...evidence, cards: [...evidence.cards.slice(0, 2), { ...question, ...patch }] })).toThrow();
     }
   });

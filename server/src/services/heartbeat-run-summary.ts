@@ -369,6 +369,37 @@ function decision(
   };
 }
 
+/** Presentation authority for a completed internal agent-chat turn. */
+export function canPublishCompletedConversationReply(input: {
+  conversation: boolean;
+  runStatus: string;
+  resultJson: Record<string, unknown> | null | undefined;
+  finalAgentMessage: { text: string; sourceEventId: string | null; channel: "final" | "unknown" } | null;
+}): boolean {
+  if (!input.conversation || input.runStatus !== "succeeded") return false;
+  const result = record(input.resultJson);
+  if (result.finalizationReasonCode === "conversation_turn_finished") return true;
+  // Older approvals still own task status, but must not hide a later completed
+  // conversational reply. Match the native conversation-reply fallback to the
+  // exact final event selected from this run; an ordinary governed wait has an
+  // interaction-response continuation and remains withheld. This authorizes
+  // publication only: it does not resolve a card or change the status decision.
+  const reply = input.finalAgentMessage;
+  const native = record(result.nativeResult);
+  const continuation = record(native.continuation);
+  return result.finalizationPhase === "committed"
+    && result.finalizationReasonCode === "governed_response_waiting"
+    && result.workspaceFinalizeStatus === "succeeded"
+    && result.prpRunTerminalState === "succeeded"
+    && reply?.channel === "final" && Boolean(reply.sourceEventId)
+    && native.schema === "paperclip.run_result.v1" && native.reportedWorkDisposition === "yielded"
+    && native.summary === reply.text.trim().slice(0, 12_000)
+    && continuation.kind === "response_wake"
+    && continuation.idempotencyKey === `conversation-reply:${reply.sourceEventId}`
+    && Array.isArray(native.evidence)
+    && native.evidence.some(entry => record(entry).ref === `run-event:${reply.sourceEventId}`);
+}
+
 /**
  * Resolve durable user-facing prose independently from the semantic run status.
  * The returned text is never truncated. Callers may persist only the bounded

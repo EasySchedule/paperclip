@@ -10,6 +10,7 @@ import {
   mergeHeartbeatRunResultJson,
   readCompletedAssistantMessageCandidate,
   resolveHeartbeatRunResponse,
+  canPublishCompletedConversationReply,
   selectHeartbeatRunFinalAgentMessage,
 } from "../services/heartbeat-run-summary.js";
 
@@ -1040,5 +1041,40 @@ describe("mergeHeartbeatRunResultJson", () => {
       summary: "adapter result",
       stdout: "raw stdout",
     });
+  });
+});
+
+
+describe("conversation clarification publication with older pending approvals", () => {
+  const finalAgentMessage = { text: "Which proposal do you mean: the note or the poster?", sourceEventId: "run-clarify:75", channel: "final" as const };
+  const resultJson = { finalizationPhase: "committed", finalizationReasonCode: "governed_response_waiting",
+    workspaceFinalizeStatus: "succeeded", prpRunTerminalState: "succeeded",
+    nativeResult: { schema: "paperclip.run_result.v1", reportedWorkDisposition: "yielded", summary: finalAgentMessage.text,
+      evidence: [{ ref: "run-event:run-clarify:75" }],
+      continuation: { kind: "response_wake", idempotencyKey: "conversation-reply:run-clarify:75" } } };
+  const input = { conversation: true, runStatus: "succeeded", resultJson, finalAgentMessage };
+  it("publishes the exact completed clarification without accepting the older cards", () => {
+    const before = structuredClone(resultJson);
+    expect(resolveHeartbeatRunResponse({ resultJson, finalAgentMessage,
+      conversationTurnFinished: canPublishCompletedConversationReply(input),
+    })).toMatchObject({ text: finalAgentMessage.text, decision: { chosenSource: "final_agent_message", commentAction: "create", sourceEventId: finalAgentMessage.sourceEventId } });
+    expect(resultJson).toEqual(before);
+  });
+  it.each(["ordinary-task", "failed", "uncommitted", "workspace-failed", "terminal-failed", "different-event", "different-summary", "governed-wait", "unknown-channel", "no-final", "no-evidence", "blocked"])("does not turn %s into permission to publish yielded prose", kind => {
+    const candidate = structuredClone(input);
+    if (kind === "ordinary-task") candidate.conversation = false;
+    if (kind === "failed") candidate.runStatus = "failed";
+    if (kind === "uncommitted") candidate.resultJson.finalizationPhase = "retryable_failure";
+    if (kind === "workspace-failed") candidate.resultJson.workspaceFinalizeStatus = "failed";
+    if (kind === "terminal-failed") candidate.resultJson.prpRunTerminalState = "failed";
+    if (kind === "different-event") candidate.finalAgentMessage.sourceEventId = "another-run:75";
+    if (kind === "different-summary") candidate.resultJson.nativeResult.summary = "Waiting for approval";
+    if (kind === "governed-wait") candidate.resultJson.nativeResult.continuation.idempotencyKey = "interaction-response:pending-card";
+    if (kind === "no-evidence") candidate.resultJson.nativeResult.evidence = [];
+    if (kind === "blocked") candidate.resultJson.finalizationReasonCode = "governed_execution_waiting";
+    const allowed = canPublishCompletedConversationReply({ ...candidate,
+      finalAgentMessage: kind === "no-final" ? null : kind === "unknown-channel" ? { ...candidate.finalAgentMessage, channel: "unknown" } : candidate.finalAgentMessage });
+    expect(allowed).toBe(false);
+    expect(resolveHeartbeatRunResponse({ resultJson: candidate.resultJson, finalAgentMessage: candidate.finalAgentMessage, conversationTurnFinished: allowed }).text).toBeNull();
   });
 });

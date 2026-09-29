@@ -346,6 +346,7 @@ import {
   mergeHeartbeatRunResultJson,
   readCompletedAssistantMessageCandidate,
   resolveHeartbeatRunResponse,
+  canPublishCompletedConversationReply,
   selectHeartbeatRunFinalAgentMessage,
   summarizeRunErrorForModel,
   type RunPresentationDecision,
@@ -25336,8 +25337,10 @@ export function heartbeatService(
             );
             const resolved = resolveHeartbeatRunResponse({
               resultJson: persistedResultJson,
-              conversationTurnFinished: isConversation(issueContext) &&
-                persistedResultJson?.finalizationReasonCode === "conversation_turn_finished",
+              conversationTurnFinished: canPublishCompletedConversationReply({
+                conversation: isConversation(issueContext), runStatus: livenessRun.status,
+                resultJson: persistedResultJson, finalAgentMessage,
+              }),
               existingComment: existingRunComment,
               finalAgentMessage,
               preferFinalResponseOverExistingComment:

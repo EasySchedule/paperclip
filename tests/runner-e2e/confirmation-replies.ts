@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { createIssueThreadInteractionSchema } from "../../packages/shared/src/validators/issue.js";
 import type { FirstTaskEvidence, FirstTaskCheck, Row } from "./first-task-scoring.js";
 import { firstTaskScenario } from "./first-task-cases.js";
-import { isChatClarificationReply, sendChatMessage, type ChatFlowInput, type ChatIssue } from "./chat-flow.js";
+import { sendChatMessage, type ChatFlowInput, type ChatIssue } from "./chat-flow.js";
 
 // Validate public fixture requests before spending provider turns. The selected
 // checkbox default deliberately proves that a default is not user consent.
@@ -54,14 +54,26 @@ export function gradeConfirmationReply(e: FirstTaskEvidence): FirstTaskCheck[] {
     evidence: last ? [last.id] : [], detail: "Structured approval is persisted before any child task is created" }];
 }
 
+// This fixture asks the user to choose between two named proposals. A question
+// about tone, deadline, or another detail does not disambiguate that approval.
+function asksWhichProposal(body: string, options: string[] = []): boolean {
+  const text = body.replace(/[*_`]/g, "");
+  const choice = /\b(?:which\s+(?:one|ones|item|items|proposal|proposals|task|tasks|option|options)\b|which\s+of\b|(?:do|did|would)\s+you\s+(?:mean|want|prefer|like)\b|should\s+(?:i|we)\s+(?:start|proceed)\b)/i;
+  return (text.match(/[^?\n]*\?/g) ?? []).some(question => {
+    if (!choice.test(question)) return false;
+    const alternatives = [question, ...options].join(" ");
+    return /\b(?:welcome\s+)?note\b/i.test(alternatives) && /\bposter\b/i.test(alternatives);
+  });
+}
+
 export function assertAmbiguousReplyUnresolved(input: { cards: Row[]; originalIds: string[]; tasks: Row[]; reply: string; agentId?: string; answerId?: string }) {
   expect(input.originalIds).toHaveLength(2);
   expect(input.cards.filter(c => input.originalIds.includes(c.id)).map(c => c.status)).toEqual(["pending", "pending"]);
   expect(input.tasks).toHaveLength(0);
   const questionCard = input.cards.some(card => card.kind === "ask_user_questions" && card.status === "pending"
     && input.agentId && card.createdByAgentId === input.agentId && input.answerId && card.originCommentIds?.includes(input.answerId)
-    && card.payload?.questions?.some((question: Row) => isChatClarificationReply(question.prompt ?? "")));
-  expect(isChatClarificationReply(input.reply) || questionCard, "Ask which proposal the ambiguous reply refers to").toBe(true);
+    && card.payload?.questions?.some((question: Row) => asksWhichProposal(question.prompt ?? "", (question.options ?? []).map((option: Row) => option.label ?? ""))));
+  expect(asksWhichProposal(input.reply) || questionCard, "Ask which proposal the ambiguous reply refers to").toBe(true);
 }
 
 export async function runAmbiguousConfirmationReply(context: {
