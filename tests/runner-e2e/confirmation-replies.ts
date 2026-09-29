@@ -58,8 +58,13 @@ export function gradeConfirmationReply(e: FirstTaskEvidence): FirstTaskCheck[] {
 // about tone, deadline, or another detail does not disambiguate that approval.
 function asksWhichProposal(body: string, options: string[] = []): boolean {
   const text = body.replace(/^(\s*)\*\s/gm, "$1- ").replace(/[*_`]/g, "");
-  const scopedChoice = /\bwhich\s+(?:[a-z-]+\s+){0,4}(?:one|ones|item|items|proposal|proposals|task|tasks|option|options|of)\b/i;
-  const intendedChoice = /\b(?:(?:do|did|would)\s+you\s+(?:mean|want|prefer|like)\b|should\s+(?:i|we)\s+(?:start|proceed)\b)/i;
+  // Keep the interrogative's object explicit. Arbitrary intervening words (or
+  // bare "of") also match "which part of" and "which font option", which ask
+  // about details rather than choosing a proposal. "Garden club" is this
+  // fixture's named scope, not a wildcard for any modifier.
+  const scopedChoice = /\bwhich\s+(?:garden\s+club\s+)?(?:one|ones|item|items|proposal|proposals|task|tasks|option|options)\b/i;
+  const proposalName = "(?:the\\s+)?(?:(?:welcome\\s+)?note|poster)(?:\\s+proposal)?";
+  const directChoice = new RegExp(`\\b(?:do|did|would)\\s+you\\s+(?:mean|want|prefer|like)\\s+${proposalName}\\s+or\\s+${proposalName}\\s*\\?`, "i");
   return [...text.matchAll(/[^?]*\?/g)].some(match => {
     const question = match[0];
     const listedOptions: string[] = [];
@@ -72,11 +77,7 @@ function asksWhichProposal(body: string, options: string[] = []): boolean {
     const alternatives = [question, ...choices].join(" ");
     const namesBoth = /\b(?:welcome\s+)?note\b/i.test(alternatives) && /\bposter\b/i.test(alternatives);
     const choosesNamedScope = scopedChoice.test(question);
-    const offersAlternatives = /\bnote\b[^?]*\bor\b[^?]*\bposter\b|\bposter\b[^?]*\bor\b[^?]*\bnote\b/i.test(question)
-      || (choices.some(option => /\bnote\b/i.test(option) && !/\bposter\b/i.test(option))
-        && choices.some(option => /\bposter\b/i.test(option) && !/\bnote\b/i.test(option)));
-    return namesBoth && (choosesNamedScope || (offersAlternatives && intendedChoice.test(question))
-      || (choices.length > 0 && offersAlternatives && /\b(?:which|choose|pick|select)\b/i.test(question)));
+    return namesBoth && (choosesNamedScope || directChoice.test(question));
   });
 }
 

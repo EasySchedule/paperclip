@@ -85,6 +85,25 @@ describe("confirmation-reply independent oracle", () => {
       expect(() => assertAmbiguousReplyUnresolved({ ...evidence, cards: [...evidence.cards.slice(0, 2), { ...question, ...patch }] })).toThrow();
     }
   });
+  it.each([
+    "Which part of the welcome note or poster should I revise?",
+    "Which font should I choose for the welcome note or poster?",
+    "Which color option should the welcome note or poster use?",
+    "Which of the fonts should I use for the welcome note or poster?",
+    "Should I select a deadline for the welcome note or poster?",
+    "Pick a font for the welcome note or poster?",
+    "Would you like the welcome note or poster to be formal?",
+    "Do you want the welcome note or poster by Friday?",
+  ])("does not mistake a detail question for proposal selection: %s", prompt => {
+    const cards = [{ id: "a", status: "pending" }, { id: "b", status: "pending" }];
+    const evidence = { cards, originalIds: ["a", "b"], tasks: [], reply: prompt, agentId: "planner", answerId: "answer" };
+    expect(() => assertAmbiguousReplyUnresolved(evidence)).toThrow();
+    // Named alternatives do not turn an unrelated field into a scope question.
+    expect(() => assertAmbiguousReplyUnresolved({ ...evidence, reply: "", cards: [...cards, {
+      id: "question", kind: "ask_user_questions", status: "pending", createdByAgentId: "planner", originCommentIds: ["answer"],
+      payload: { questions: [{ prompt, options: [{ label: "Welcome note" }, { label: "Poster" }] }] },
+    }] })).toThrow();
+  });
   it.each(runnerMatrix.filter(e => e.suite.id === "confirmation-replies" && e.task.flow === "first_task"))("provisions the real onboarding fixture contract for $id", async execution => {
     const get = vi.fn().mockResolvedValue([{ id: "local", driver: "local" }]);
     const postSensitive = vi.fn().mockResolvedValue({ id: "secret" });
