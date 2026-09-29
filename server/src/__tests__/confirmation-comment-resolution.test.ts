@@ -6,7 +6,7 @@ import { activityLog, agents, companies, createDb, documents, documentRevisions,
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { resolveConfirmationFromComment } from "../services/confirmation-comment-resolution.js";
 import { issueThreadInteractionService } from "../services/issue-thread-interactions.js";
-import { getConversationConfirmationContext } from "../services/conversation-confirmation-context.js";
+import { getConversationConfirmationContext, hasRecordedConversationConfirmationReply } from "../services/conversation-confirmation-context.js";
 
 const { resolvedTelemetry } = vi.hoisted(() => ({ resolvedTelemetry: vi.fn() }));
 vi.mock("@paperclipai/shared/telemetry", async importOriginal => ({
@@ -40,6 +40,24 @@ const support = await getEmbeddedPostgresTestSupport();
   }
   const readCard = (id: string) => db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, id)).then(rows => rows[0]!);
   const audit = (id: string) => db.select().from(activityLog).where(eq(activityLog.entityId, id)).then(rows => rows.filter(row => row.details?.source === "conversation_reply"));
+
+  it.each(["accept", "reject"] as const)("requires a real %s decision from this run and wake before allowing a chat acknowledgement", async decision => {
+    const f = await seed(false, true);
+    const input = { db, ...f, commentId: f.comment.id, sessionGeneration: 1 };
+    expect(await hasRecordedConversationConfirmationReply(input)).toBe(false);
+    await resolveConfirmationFromComment(db, { ...f.args, input: { commentId: f.comment.id, decision } });
+    expect(await hasRecordedConversationConfirmationReply(input)).toBe(true);
+    for (const patch of [{ commentId: null }, { commentId: randomUUID() }, { runId: randomUUID() },
+      { agentId: randomUUID() }, { companyId: randomUUID() }, { issueId: randomUUID() },
+      { sessionGeneration: 2 }, { sessionGeneration: undefined },
+    ]) expect(await hasRecordedConversationConfirmationReply({ ...input, ...patch })).toBe(false);
+    await db.update(issues).set({ executionRunId: null }).where(eq(issues.id, f.issueId));
+    expect(await hasRecordedConversationConfirmationReply(input)).toBe(true);
+    const [newOwner] = await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId,
+      nativeIssueId: f.issueId, status: "running", runtimeMode: "native" }).returning();
+    await db.update(issues).set({ executionRunId: newOwner.id }).where(eq(issues.id, f.issueId));
+    expect(await hasRecordedConversationConfirmationReply(input)).toBe(false);
+  });
 
   it("supplies actual pending card identities and explicit choices, then refreshes after resolution", async () => {
     const f = await seed(true, true);

@@ -375,15 +375,17 @@ export function canPublishCompletedConversationReply(input: {
   runStatus: string;
   resultJson: Record<string, unknown> | null | undefined;
   finalAgentMessage: { text: string; sourceEventId: string | null; channel: "final" | "unknown" } | null;
+  /** Server-queried current-run/current-session decision tied to the wake comment. */
+  recordedConfirmationReply?: boolean;
 }): boolean {
   if (!input.conversation || input.runStatus !== "succeeded") return false;
   const result = record(input.resultJson);
   if (result.finalizationReasonCode === "conversation_turn_finished") return true;
   // Older approvals still own task status, but must not hide a later completed
-  // conversational reply. Match the native conversation-reply fallback to the
-  // exact final event selected from this run; an ordinary governed wait has an
-  // interaction-response continuation and remains withheld. This authorizes
-  // publication only: it does not resolve a card or change the status decision.
+  // conversational reply. Allow an explicit native acknowledgement only with a
+  // server-verified saved answer, or match the conversation-reply fallback to
+  // the exact final event. A new interaction-response wait remains withheld.
+  // This authorizes publication only, never card or task-status transitions.
   const reply = input.finalAgentMessage;
   const native = record(result.nativeResult);
   const continuation = record(native.continuation);
@@ -393,11 +395,14 @@ export function canPublishCompletedConversationReply(input: {
     && result.prpRunTerminalState === "succeeded"
     && reply?.channel === "final" && Boolean(reply.sourceEventId)
     && native.schema === "paperclip.run_result.v1" && native.reportedWorkDisposition === "yielded"
-    && native.summary === reply.text.trim().slice(0, 12_000)
     && continuation.kind === "response_wake"
-    && continuation.idempotencyKey === `conversation-reply:${reply.sourceEventId}`
-    && Array.isArray(native.evidence)
-    && native.evidence.some(entry => record(entry).ref === `run-event:${reply.sourceEventId}`);
+    && ((input.recordedConfirmationReply === true
+      && typeof continuation.idempotencyKey === "string"
+      && !continuation.idempotencyKey.startsWith("interaction-response:"))
+      || (native.summary === reply.text.trim().slice(0, 12_000)
+        && continuation.idempotencyKey === `conversation-reply:${reply.sourceEventId}`
+        && Array.isArray(native.evidence)
+        && native.evidence.some(entry => record(entry).ref === `run-event:${reply.sourceEventId}`)));
 }
 
 /**

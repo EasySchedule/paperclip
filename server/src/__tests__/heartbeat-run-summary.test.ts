@@ -1060,6 +1060,29 @@ describe("conversation clarification publication with older pending approvals", 
     })).toMatchObject({ text: finalAgentMessage.text, decision: { chosenSource: "final_agent_message", commentAction: "create", sourceEventId: finalAgentMessage.sourceEventId } });
     expect(resultJson).toEqual(before);
   });
+  it("publishes an explicit native acknowledgement after the server verifies this run recorded a conversational answer", () => {
+    const completedDecision = { ...resultJson, nativeResult: { ...resultJson.nativeResult,
+      summary: "Recorded the welcome note decision; the poster remains pending.",
+      evidence: [{ ref: "interaction:accepted-note" }],
+      continuation: { kind: "response_wake", idempotencyKey: "welcome-note-recorded" },
+    } };
+    const candidate = { ...input, resultJson: completedDecision, recordedConfirmationReply: true };
+    expect(resolveHeartbeatRunResponse({ resultJson: completedDecision, finalAgentMessage,
+      conversationTurnFinished: canPublishCompletedConversationReply(candidate),
+    }).text).toBe(finalAgentMessage.text);
+    // A provider-claimed flag is never server proof of a persisted decision.
+    expect(canPublishCompletedConversationReply({ ...candidate, recordedConfirmationReply: false,
+      resultJson: { ...completedDecision, recordedConfirmationReply: true },
+    })).toBe(false);
+    for (const patch of [{ conversation: false }, { runStatus: "failed" }, { finalAgentMessage: null },
+      { finalAgentMessage: { ...finalAgentMessage, channel: "unknown" as const } },
+      { resultJson: { ...completedDecision, finalizationPhase: "retryable_failure" } },
+      { resultJson: { ...completedDecision, workspaceFinalizeStatus: "failed" } },
+      { resultJson: { ...completedDecision, prpRunTerminalState: "failed" } },
+      { resultJson: { ...completedDecision, nativeResult: { ...completedDecision.nativeResult,
+        continuation: { kind: "response_wake", idempotencyKey: "interaction-response:new-question" } } } },
+    ]) expect(canPublishCompletedConversationReply({ ...candidate, ...patch })).toBe(false);
+  });
   it.each(["ordinary-task", "failed", "uncommitted", "workspace-failed", "terminal-failed", "different-event", "different-summary", "governed-wait", "unknown-channel", "no-final", "no-evidence", "blocked"])("does not turn %s into permission to publish yielded prose", kind => {
     const candidate = structuredClone(input);
     if (kind === "ordinary-task") candidate.conversation = false;
