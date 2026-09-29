@@ -63,7 +63,7 @@ describe("confirmation-reply independent oracle", () => {
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Do you want the welcome note and poster by Friday?" })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Do you mean the welcome note or the poster?" })).not.toThrow();
     for (const reply of ["Which proposal do you mean?\n- Welcome note\n- Poster", "Which proposal do you mean?\n\n* Welcome note\n* Poster", "Which one\nshould I proceed with: the welcome note or poster?",
-      "Should I proceed with the welcome note or the poster?", "Do you mean the note or the poster, or both?", "Should we start the poster or the welcome note, or both?"]) {
+      "Should I proceed with the welcome note or the poster?", "Do you mean the note or the poster, or both?", "Should we start the poster or the welcome note, or both?", "Which garden-club item should we move forward with: the note or poster?"]) {
       expect(() => assertAmbiguousReplyUnresolved({ ...e, reply })).not.toThrow();
     }
   });

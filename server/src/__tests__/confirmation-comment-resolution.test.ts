@@ -6,6 +6,7 @@ import { activityLog, agents, companies, createDb, documents, documentRevisions,
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { resolveConfirmationFromComment } from "../services/confirmation-comment-resolution.js";
 import { issueThreadInteractionService } from "../services/issue-thread-interactions.js";
+import { getConversationConfirmationContext } from "../services/conversation-confirmation-context.js";
 
 const { resolvedTelemetry } = vi.hoisted(() => ({ resolvedTelemetry: vi.fn() }));
 vi.mock("@paperclipai/shared/telemetry", async importOriginal => ({
@@ -39,6 +40,52 @@ const support = await getEmbeddedPostgresTestSupport();
   }
   const readCard = (id: string) => db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, id)).then(rows => rows[0]!);
   const audit = (id: string) => db.select().from(activityLog).where(eq(activityLog.entityId, id)).then(rows => rows.filter(row => row.details?.source === "conversation_reply"));
+
+  it("supplies actual pending card identities and explicit choices, then refreshes after resolution", async () => {
+    const f = await seed(true, true);
+    const snapshot = await getConversationConfirmationContext({ db, ...f });
+    expect(snapshot).toMatchObject({ truncated: false, cards: [{ id: f.card.id, status: "pending", resolverPolicy: "anyone",
+      options: [{ id: "note", label: "Welcome note" }, { id: "poster", label: "Poster" }] }] });
+    expect(JSON.stringify(snapshot)).not.toContain("defaultSelectedOptionIds");
+    await resolveConfirmationFromComment(db, f.args);
+    expect(await getConversationConfirmationContext({ db, ...f })).toEqual({ truncated: false, cards: [] });
+  });
+  it.each(["ordinary-task", "other-company", "other-agent"])("does not supply confirmation context for %s", async kind => {
+    const f = await seed(false, kind !== "ordinary-task");
+    expect(await getConversationConfirmationContext({ db, ...f,
+      ...(kind === "other-company" ? { companyId: randomUUID() } : {}),
+      ...(kind === "other-agent" ? { agentId: randomUUID() } : {}),
+    })).toBeNull();
+  });
+  it.each(["toolAction", "secretProposal", "connectionAuthorization", "questions", "expired"])("excludes %s from ordinary confirmation context", async kind => {
+    const f = await seed(false, true);
+    await db.update(issueThreadInteractions).set(kind === "questions" ? { kind: "ask_user_questions" }
+      : kind === "expired" ? { status: "expired" }
+      : { payload: { ...f.card.payload, [kind]: { value: "must-not-leak" } } }).where(eq(issueThreadInteractions.id, f.card.id));
+    expect(await getConversationConfirmationContext({ db, ...f })).toEqual({ truncated: false, cards: [] });
+  });
+  it("excludes prior-session cards and preserves the current card's human-only policy", async () => {
+    const f = await seed(false, true);
+    const boundaryAt = new Date(Date.now() + 1000);
+    const [boundary] = await db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId,
+      authorType: "user", authorUserId: "operator", body: "/new", createdAt: boundaryAt }).returning();
+    await db.update(issues).set({ conversationBoundaryCommentId: boundary.id }).where(eq(issues.id, f.issueId));
+    const [current] = await db.insert(issueThreadInteractions).values({ companyId: f.companyId, issueId: f.issueId,
+      kind: "request_confirmation", effectiveResolverPolicy: "human_only", payload: { version: 1, prompt: "Current proposal" },
+      createdAt: new Date(boundaryAt.getTime() + 1000) }).returning();
+    expect(await getConversationConfirmationContext({ db, ...f })).toMatchObject({ cards: [{ id: current.id, resolverPolicy: "human_only" }] });
+  });
+  it("bounds card and proposal data and declares truncation instead of hiding it", async () => {
+    const f = await seed(false, true);
+    await db.update(issueThreadInteractions).set({ payload: { version: 1, prompt: "x".repeat(2500) } }).where(eq(issueThreadInteractions.id, f.card.id));
+    await db.insert(issueThreadInteractions).values(Array.from({ length: 13 }, () => ({ companyId: f.companyId, issueId: f.issueId,
+      kind: "request_confirmation", payload: { version: 1 as const, prompt: "Another proposal" }, createdAt: new Date(Date.now() + 1000) })));
+    const snapshot = await getConversationConfirmationContext({ db, ...f });
+    expect(snapshot?.truncated).toBe(true);
+    expect(snapshot?.cards).toHaveLength(12);
+    expect(snapshot?.cards[0]?.prompt).toHaveLength(2000);
+    expect(snapshot?.cards[0]?.promptTruncated).toBe(true);
+  });
 
   it.each([false, true])("persists acceptance, explicit selection and source-message audit (checkbox=%s)", async checkbox => {
     const f = await seed(checkbox, true);

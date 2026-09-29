@@ -13,8 +13,8 @@ describe("confirmation reply through the native API tool", () => {
   const oldSecret = process.env.PAPERCLIP_AGENT_JWT_SECRET;
   beforeAll(async () => { process.env.PAPERCLIP_AGENT_JWT_SECRET = randomUUID(); server = await startRunnerApiTestServer(); }, 60_000);
   afterAll(async () => { await server?.close(); if (oldSecret === undefined) delete process.env.PAPERCLIP_AGENT_JWT_SECRET; else process.env.PAPERCLIP_AGENT_JWT_SECRET = oldSecret; });
-  async function seed() {
-    const f = await server.fixture({ conversation: true, disableWakeOnDemand: true });
+  async function seed(mode: "standard" | "planning" | "ask" = "standard") {
+    const f = await server.fixture({ conversation: true, disableWakeOnDemand: true, mode });
     const [issue] = await server.db.select().from(issues).where(eq(issues.id, f.issueId));
     const card = await issueThreadInteractionService(server.db).create(issue!, createIssueThreadInteractionSchema.parse({ kind: "request_confirmation", payload: { version: 1, prompt: "Write the welcome note?" } }), { agentId: f.agentId });
     const [comment] = await server.db.insert(issueComments).values({ companyId: f.companyId, issueId: f.issueId, authorType: "user", authorUserId: f.userId, body: "Yes, write it." }).returning();
@@ -37,6 +37,13 @@ describe("confirmation reply through the native API tool", () => {
     const other = await seed();
     const foreignAnswer = { ...other.call, arguments: { ...other.call.arguments, body: { ...other.call.arguments.body, commentId: comment.id } } };
     expect(await other.f.authority.execute(foreignAnswer)).toMatchObject({ status: 422 });
+  });
+  it("records a conversational decision in Plan mode without opening writes in Ask mode", async () => {
+    const planning = await seed("planning");
+    expect(await planning.f.authority.execute(planning.call)).toMatchObject({ status: 200, data: { interaction: { status: "accepted" } } });
+    const ask = await seed("ask");
+    await expect(ask.f.authority.execute(ask.call)).rejects.toThrow("only reads");
+    expect((await server.db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, ask.card.id)))[0]?.status).toBe("pending");
   });
   it("rejects unauthenticated HTTP requests", async () => {
     const { f, card, call, comment } = await seed();

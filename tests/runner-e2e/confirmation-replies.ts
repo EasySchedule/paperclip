@@ -62,7 +62,7 @@ function asksWhichProposal(body: string, options: string[] = []): boolean {
   // bare "of") also match "which part of" and "which font option", which ask
   // about details rather than choosing a proposal. "Garden club" is this
   // fixture's named scope, not a wildcard for any modifier.
-  const scopedChoice = /\bwhich\s+(?:garden\s+club\s+)?(?:one|ones|item|items|proposal|proposals|task|tasks|option|options)\b/i;
+  const scopedChoice = /\bwhich\s+(?:garden[\s-]+club\s+)?(?:one|ones|item|items|proposal|proposals|task|tasks|option|options)\b/i;
   const proposalName = "(?:the\\s+)?(?:(?:welcome\\s+)?note|poster)(?:\\s+proposal)?";
   const choiceIntent = "(?:(?:do|did|would)\\s+you\\s+(?:mean|want|prefer|like)|should\\s+(?:i|we)\\s+(?:start|proceed\\s+with))";
   const directChoice = new RegExp(`\\b${choiceIntent}\\s+${proposalName}\\s+or\\s+${proposalName}(?:,?\\s+or\\s+both)?\\s*\\?`, "i");
