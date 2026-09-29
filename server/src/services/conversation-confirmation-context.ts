@@ -66,5 +66,12 @@ export async function hasRecordedConversationConfirmationReply(input: {
       sql`${issueThreadInteractions.result}->>'outcome' = ${issueThreadInteractions.status}`,
       sql`not (${issueThreadInteractions.payload} ?| array['toolAction', 'secretProposal', 'connectionAuthorization'])`,
     )).limit(1);
-  return Boolean(card);
+  if (!card) return false;
+  // An old pending card must not hide this acknowledgement, but a new request
+  // from this very turn still owns its normal question/approval presentation.
+  const [newRequest] = await input.db.select({ id: issueThreadInteractions.id }).from(issueThreadInteractions).where(and(
+    eq(issueThreadInteractions.companyId, input.companyId), eq(issueThreadInteractions.issueId, input.issueId),
+    eq(issueThreadInteractions.sourceRunId, input.runId), eq(issueThreadInteractions.status, "pending"),
+  )).limit(1);
+  return !newRequest;
 }

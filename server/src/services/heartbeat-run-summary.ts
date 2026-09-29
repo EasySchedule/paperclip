@@ -375,7 +375,8 @@ export function canPublishCompletedConversationReply(input: {
   runStatus: string;
   resultJson: Record<string, unknown> | null | undefined;
   finalAgentMessage: { text: string; sourceEventId: string | null; channel: "final" | "unknown" } | null;
-  /** Server-queried current-run/current-session decision tied to the wake comment. */
+  /** Server-queried current-run/current-session decision tied to the wake comment,
+   * with no new pending interaction created by this run. */
   recordedConfirmationReply?: boolean;
 }): boolean {
   if (!input.conversation || input.runStatus !== "succeeded") return false;
@@ -389,6 +390,7 @@ export function canPublishCompletedConversationReply(input: {
   const reply = input.finalAgentMessage;
   const native = record(result.nativeResult);
   const continuation = record(native.continuation);
+  const completion = record(native.completionClaim);
   return result.finalizationPhase === "committed"
     && result.finalizationReasonCode === "governed_response_waiting"
     && result.workspaceFinalizeStatus === "succeeded"
@@ -397,8 +399,11 @@ export function canPublishCompletedConversationReply(input: {
     && native.schema === "paperclip.run_result.v1" && native.reportedWorkDisposition === "yielded"
     && continuation.kind === "response_wake"
     && ((input.recordedConfirmationReply === true
+      && completion.objectiveSatisfied === true
+      && Array.isArray(completion.remainingWork)
+      && completion.remainingWork.every(work => record(work).blocksCompletion === false)
       && typeof continuation.idempotencyKey === "string"
-      && !continuation.idempotencyKey.startsWith("interaction-response:"))
+      && !/^(?:interaction|question)-response:/.test(continuation.idempotencyKey))
       || (native.summary === reply.text.trim().slice(0, 12_000)
         && continuation.idempotencyKey === `conversation-reply:${reply.sourceEventId}`
         && Array.isArray(native.evidence)

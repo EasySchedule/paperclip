@@ -63,7 +63,11 @@ describe("confirmation-reply independent oracle", () => {
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Do you want the welcome note and poster by Friday?" })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Do you mean the welcome note or the poster?" })).not.toThrow();
     for (const reply of ["Which proposal do you mean?\n- Welcome note\n- Poster", "Which proposal do you mean?\n\n* Welcome note\n* Poster", "Which one\nshould I proceed with: the welcome note or poster?",
-      "Should I proceed with the welcome note or the poster?", "Do you mean the note or the poster, or both?", "Should we start the poster or the welcome note, or both?", "Which garden-club item should we move forward with: the note or poster?"]) {
+      "Should I proceed with the welcome note or the poster?", "Do you mean the note or the poster, or both?", "Should we start the poster or the welcome note, or both?", "Which garden-club item should we move forward with: the note or poster?",
+      "Which pending proposal does yes approve?\n- Welcome note\n- Poster",
+      "Which project(s) should I start on now?\n- Welcome note only\n- Poster only\n- Both",
+      'There are two pending proposals: the **welcome note** and the **poster**. Your yes does not specify which. Could you clarify:\n\n- Just the welcome note?\n- Just the poster?\n- Both?\n\nI will record your decision.',
+    ]) {
       expect(() => assertAmbiguousReplyUnresolved({ ...e, reply })).not.toThrow();
     }
   });
@@ -95,6 +99,7 @@ describe("confirmation-reply independent oracle", () => {
     "Pick a font for the welcome note or poster?",
     "Would you like the welcome note or poster to be formal?",
     "Do you want the welcome note or poster by Friday?",
+    "Could you clarify:\n- What font for the welcome note?\n- What font for the poster?",
   ])("does not mistake a detail question for proposal selection: %s", prompt => {
     const cards = [{ id: "a", status: "pending" }, { id: "b", status: "pending" }];
     const evidence = { cards, originalIds: ["a", "b"], tasks: [], reply: prompt, agentId: "planner", answerId: "answer" };

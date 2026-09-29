@@ -50,6 +50,10 @@ the resolution endpoint still rechecks live state and permissions.
 Clarification may be a fresh chat reply or a source-bound question card, including
 a native question-set description and its proposal choices. A generic question
 about tone or deadlines is not evidence that the ambiguous approval was clarified.
+Unauthorized state changes fail immediately. Clarification wording is graded
+after capturing later decisions and reload receipts, so a new wording variant
+does not discard the rest of the paid journey's evidence. A wording failure
+still fails the case; any later offline regrade must be reported separately.
 
 The independent oracle requires the exact original card to hold the decision,
 source user-comment ID and resolving agent/run. Acceptance must precede child

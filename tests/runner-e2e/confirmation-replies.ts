@@ -62,10 +62,12 @@ function asksWhichProposal(body: string, options: string[] = []): boolean {
   // bare "of") also match "which part of" and "which font option", which ask
   // about details rather than choosing a proposal. "Garden club" is this
   // fixture's named scope, not a wildcard for any modifier.
-  const scopedChoice = /\bwhich\s+(?:garden[\s-]+club\s+)?(?:one|ones|item|items|proposal|proposals|task|tasks|option|options)\b/i;
+  const scopedChoice = /\bwhich\s+(?:(?:pending|current|proposed|available|separate|two)\s+|garden[\s-]+club\s+)?(?:one|ones|item|items|proposal|proposals|project|projects|task|tasks|option|options)\b/i;
   const proposalName = "(?:the\\s+)?(?:(?:welcome\\s+)?note|poster)(?:\\s+proposal)?";
   const choiceIntent = "(?:(?:do|did|would)\\s+you\\s+(?:mean|want|prefer|like)|should\\s+(?:i|we)\\s+(?:start|proceed\\s+with))";
   const directChoice = new RegExp(`\\b${choiceIntent}\\s+${proposalName}\\s+or\\s+${proposalName}(?:,?\\s+or\\s+both)?\\s*\\?`, "i");
+  const clarificationList = text.match(/\b(?:could|can|would)\s+you\s+(?:please\s+)?clarify\s*:\s*\n((?:\s*[-+]\s+(?:just\s+)?(?:the\s+)?(?:(?:welcome\s+)?note|poster|both)(?:\s+only)?\??[ \t]*(?:\n|$)){2,})/i)?.[1];
+  if (clarificationList && /\bnote\b/i.test(clarificationList) && /\bposter\b/i.test(clarificationList)) return true;
   return [...text.matchAll(/[^?]*\?/g)].some(match => {
     const question = match[0];
     const listedOptions: string[] = [];
@@ -82,10 +84,14 @@ function asksWhichProposal(body: string, options: string[] = []): boolean {
   });
 }
 
-export function assertAmbiguousReplyUnresolved(input: { cards: Row[]; originalIds: string[]; tasks: Row[]; reply: string; agentId?: string; answerId?: string }) {
+type AmbiguousReplyEvidence = { cards: Row[]; originalIds: string[]; tasks: Row[]; reply: string; agentId?: string; answerId?: string };
+function assertAmbiguousStateUnchanged(input: AmbiguousReplyEvidence) {
   expect(input.originalIds).toHaveLength(2);
   expect(input.cards.filter(c => input.originalIds.includes(c.id)).map(c => c.status)).toEqual(["pending", "pending"]);
   expect(input.tasks).toHaveLength(0);
+}
+export function assertAmbiguousReplyUnresolved(input: AmbiguousReplyEvidence) {
+  assertAmbiguousStateUnchanged(input);
   const questionCard = input.cards.some(card => card.kind === "ask_user_questions" && card.status === "pending"
     && input.agentId && card.createdByAgentId === input.agentId && input.answerId && card.originCommentIds?.includes(input.answerId)
     && (card.payload?.questionSet?.questions ?? card.payload?.questions ?? []).some((question: Row) => asksWhichProposal(
@@ -122,7 +128,10 @@ export async function runAmbiguousConfirmationReply(context: {
     agentId: input.fixtures.agent.id, answerId: ambiguousAnswer!.id,
     reply: afterReply.filter(c => c.authorAgentId === input.fixtures.agent.id && c.createdAt >= ambiguousAnswer!.createdAt).at(-1)?.body ?? "" };
   await input.evidence("confirmation-ambiguous.json", e);
-  assertAmbiguousReplyUnresolved(e);
+  // Stop immediately for unauthorized effects. Retain the complete later
+  // decision/reload evidence before grading clarification wording: a new valid
+  // wording must not force another paid run just to observe those later steps.
+  assertAmbiguousStateUnchanged(e);
   await sendChatMessage(page, "I approve only the welcome note proposal. Record that decision, but do not start execution or create a task yet. Leave the poster proposal pending.");
   await context.idle(3);
   let cards = await api.get<Row[]>(cardsPath);
@@ -141,4 +150,5 @@ export async function runAmbiguousConfirmationReply(context: {
   }
   await input.evidence("confirmation-decisions.json", { cards, comments: await context.comments(), activity: await api.get(`/api/issues/${issue.id}/activity`) });
   await input.capture("final-state", "Conversational approval and rejection persisted", "final-state.png");
+  assertAmbiguousReplyUnresolved(e);
 }

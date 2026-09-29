@@ -1064,6 +1064,7 @@ describe("conversation clarification publication with older pending approvals", 
     const completedDecision = { ...resultJson, nativeResult: { ...resultJson.nativeResult,
       summary: "Recorded the welcome note decision; the poster remains pending.",
       evidence: [{ ref: "interaction:accepted-note" }],
+      completionClaim: { objectiveSatisfied: true, remainingWork: [] },
       continuation: { kind: "response_wake", idempotencyKey: "welcome-note-recorded" },
     } };
     const candidate = { ...input, resultJson: completedDecision, recordedConfirmationReply: true };
@@ -1081,6 +1082,12 @@ describe("conversation clarification publication with older pending approvals", 
       { resultJson: { ...completedDecision, prpRunTerminalState: "failed" } },
       { resultJson: { ...completedDecision, nativeResult: { ...completedDecision.nativeResult,
         continuation: { kind: "response_wake", idempotencyKey: "interaction-response:new-question" } } } },
+      { resultJson: { ...completedDecision, nativeResult: { ...completedDecision.nativeResult,
+        continuation: { kind: "response_wake", idempotencyKey: "question-response:new-question" } } } },
+      { resultJson: { ...completedDecision, nativeResult: { ...completedDecision.nativeResult,
+        completionClaim: { objectiveSatisfied: false, remainingWork: [] } } } },
+      { resultJson: { ...completedDecision, nativeResult: { ...completedDecision.nativeResult,
+        completionClaim: { objectiveSatisfied: true, remainingWork: [{ blocksCompletion: true }] } } } },
     ]) expect(canPublishCompletedConversationReply({ ...candidate, ...patch })).toBe(false);
   });
   it.each(["ordinary-task", "failed", "uncommitted", "workspace-failed", "terminal-failed", "different-event", "different-summary", "governed-wait", "unknown-channel", "no-final", "no-evidence", "blocked"])("does not turn %s into permission to publish yielded prose", kind => {

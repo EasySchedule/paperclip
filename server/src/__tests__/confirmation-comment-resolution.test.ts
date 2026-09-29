@@ -47,6 +47,12 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(await hasRecordedConversationConfirmationReply(input)).toBe(false);
     await resolveConfirmationFromComment(db, { ...f.args, input: { commentId: f.comment.id, decision } });
     expect(await hasRecordedConversationConfirmationReply(input)).toBe(true);
+    const [newQuestion] = await db.insert(issueThreadInteractions).values({ companyId: f.companyId, issueId: f.issueId,
+      kind: "ask_user_questions", sourceRunId: f.runId, payload: { version: 1, questions: [{ id: "scope", prompt: "What next?",
+        selectionMode: "single", options: [{ id: "a", label: "One" }, { id: "b", label: "Two" }] }] } }).returning();
+    expect(await hasRecordedConversationConfirmationReply(input)).toBe(false);
+    await db.update(issueThreadInteractions).set({ status: "answered" }).where(eq(issueThreadInteractions.id, newQuestion.id));
+    expect(await hasRecordedConversationConfirmationReply(input)).toBe(true);
     for (const patch of [{ commentId: null }, { commentId: randomUUID() }, { runId: randomUUID() },
       { agentId: randomUUID() }, { companyId: randomUUID() }, { issueId: randomUUID() },
       { sessionGeneration: 2 }, { sessionGeneration: undefined },
