@@ -1,11 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { activityLog, agents, companies, createDb, documents, documentRevisions, heartbeatRuns,
   issueComments, issueDocuments, issues, issueThreadInteractions } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { resolveConfirmationFromComment } from "../services/confirmation-comment-resolution.js";
 import { issueThreadInteractionService } from "../services/issue-thread-interactions.js";
+
+const { resolvedTelemetry } = vi.hoisted(() => ({ resolvedTelemetry: vi.fn() }));
+vi.mock("@paperclipai/shared/telemetry", async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(), trackInteractionResolved: resolvedTelemetry, trackInteractionCreated: vi.fn(),
+}));
+vi.mock("../telemetry.js", async importOriginal => ({
+  ...await importOriginal<Record<string, unknown>>(), getTelemetryClient: () => ({}),
+}));
 
 const support = await getEmbeddedPostgresTestSupport();
 (support.supported ? describe : describe.skip)("conversational confirmation resolution", () => {
@@ -37,6 +45,25 @@ const support = await getEmbeddedPostgresTestSupport();
     const answer = await resolveConfirmationFromComment(db, f.args);
     expect(answer).toMatchObject({ deduplicated: false, interaction: { status: "accepted", resolvedByAgentId: f.agentId, resolvedByRunId: f.runId, resolvedByUserId: null, result: { outcome: "accepted", commentId: f.comment.id, ...(checkbox ? { selectedOptionIds: ["note"] } : {}) } } });
     expect(await audit(f.issueId)).toMatchObject([{ action: "issue.thread_interaction_accepted", details: { responseCommentId: f.comment.id, responseUserId: "operator" } }]);
+  });
+  it.each(["accept", "reject"] as const)("does not emit a %s resolution when the provenance audit rolls back", async decision => {
+    const f = await seed();
+    await db.execute(sql.raw(`CREATE FUNCTION fail_confirmation_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.entity_id = '${f.issueId}' THEN RAISE EXCEPTION 'audit write failed'; END IF; RETURN NEW; END $$`));
+    await db.execute(sql.raw("CREATE TRIGGER fail_confirmation_audit BEFORE INSERT ON activity_log FOR EACH ROW EXECUTE FUNCTION fail_confirmation_audit()"));
+    resolvedTelemetry.mockClear();
+    try {
+      await expect(resolveConfirmationFromComment(db, { ...f.args, input: { commentId: f.comment.id, decision } })).rejects.toThrow();
+      expect((await readCard(f.card.id)).status).toBe("pending");
+      expect(await audit(f.issueId)).toHaveLength(0);
+      expect(resolvedTelemetry).not.toHaveBeenCalled();
+    } finally {
+      await db.execute(sql.raw("DROP TRIGGER fail_confirmation_audit ON activity_log"));
+      await db.execute(sql.raw("DROP FUNCTION fail_confirmation_audit()"));
+    }
+    await resolveConfirmationFromComment(db, { ...f.args, input: { commentId: f.comment.id, decision } });
+    expect(resolvedTelemetry).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.objectContaining({ status: decision === "accept" ? "accepted" : "rejected" }));
+    await resolveConfirmationFromComment(db, { ...f.args, input: { commentId: f.comment.id, decision } });
+    expect(resolvedTelemetry).toHaveBeenCalledTimes(1);
   });
   it("records refusal and its reason on the card", async () => {
     const f = await seed();

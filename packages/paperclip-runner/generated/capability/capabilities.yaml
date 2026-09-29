@@ -276,9 +276,9 @@
       "kind": "skill_heading",
       "sourceAnchor": "skills/paperclip/SKILL.md#L708:conversational-confirmation-answers",
       "heading": "Conversational confirmation answers",
-      "primaryDisposition": "control_plane_owned",
-      "semanticOperation": "runtime_reconciliation",
-      "expectedMockState": "runtime_decision_record"
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "call_api",
+      "expectedMockState": "operation_result"
     },
     {
       "id": "skill:skills/paperclip/references/api-reference.md:1",
@@ -762,8 +762,8 @@
       "kind": "skill_heading",
       "sourceAnchor": "skills/paperclip/references/api-reference.md#L1076:conversational-confirmation-answers",
       "heading": "Conversational confirmation answers",
-      "primaryDisposition": "optional_agent_tool",
-      "semanticOperation": "scoped_discovery",
+      "primaryDisposition": "always_agent_tool",
+      "semanticOperation": "call_api",
       "expectedMockState": "operation_result"
     },
     {

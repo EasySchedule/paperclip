@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { resolve } from "node:path";
+import { decodeInventory } from "../scripts/lib/capability-inventory.mjs";
 import { validateRows } from "../scripts/generate-capability-contract.mjs";
 
 const phaseDirectory = resolve(import.meta.dirname, "../generated/capability");
@@ -38,4 +39,15 @@ test("contract validation rejects missing, duplicate, and unclassified entries",
   assert.throws(() => validateRows([{ ...row, sourceAnchor: "" }], "fixture"), /source anchor/);
   assert.throws(() => validateRows([row, { ...row, id: "example:2" }], "fixture"), /duplicate source anchor/);
   assert.throws(() => validateRows([{ ...row, primaryDisposition: "unclassified" }], "fixture"), /valid primary disposition/);
+});
+
+
+test("conversational answer guidance has the same agent-operation classification in both inventories", async () => {
+  const generated = (await readRows("capabilities.yaml")).filter(row => row.heading === "Conversational confirmation answers");
+  const spec = decodeInventory(await readFile(resolve(import.meta.dirname, "../spec/capability/capabilities.yaml"), "utf8")).rows
+    .filter(row => row.title === "Conversational confirmation answers");
+  assert.equal(generated.length, 2);
+  assert.equal(spec.length, 2);
+  for (const row of [...generated, ...spec]) assert.equal(row.primaryDisposition, "always_agent_tool");
+  for (const row of generated) assert.equal(row.semanticOperation, "call_api");
 });

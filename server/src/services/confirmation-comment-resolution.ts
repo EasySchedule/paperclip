@@ -24,6 +24,7 @@ export async function resolveConfirmationFromComment(db: Db, args: {
 }) {
   const input = resolveConfirmationFromCommentSchema.parse(args.input);
   let publication: ActivityPublication | null = null;
+  const commitEffects: Array<(committedDb: Db) => Promise<void>> = [];
   const result = await db.transaction(async (transaction) => {
     const tx = transaction as unknown as Db;
     // Match task mutation/Stop/reset lock ordering, including replay checks.
@@ -113,9 +114,10 @@ export async function resolveConfirmationFromComment(db: Db, args: {
 
     // These service methods recheck resolver audience, company review policy,
     // target revision, selection bounds and issue lifecycle under the same lock.
+    const mutationOptions = { deferConfirmationCommitEffects: (effect: (committedDb: Db) => Promise<void>) => { commitEffects.push(effect); } };
     const interaction = input.decision === "accept"
-      ? (await svc.acceptInteraction(issue, card.id, { selectedOptionIds: selected }, args.actor)).interaction
-      : await svc.rejectInteraction(issue, card.id, { reason: input.reason }, args.actor);
+      ? (await svc.acceptInteraction(issue, card.id, { selectedOptionIds: selected }, args.actor, mutationOptions)).interaction
+      : await svc.rejectInteraction(issue, card.id, { reason: input.reason }, args.actor, mutationOptions);
     if ((interaction.kind !== "request_confirmation" && interaction.kind !== "request_checkbox_confirmation") || !interaction.result) {
       throw conflict("Confirmation resolution did not persist a result");
     }
@@ -132,5 +134,6 @@ export async function resolveConfirmationFromComment(db: Db, args: {
     return { interaction: await svc.getForIssue(issue, card.id), deduplicated: false };
   });
   if (publication) publishActivity(publication);
+  for (const effect of commitEffects) await effect(db);
   return result;
 }

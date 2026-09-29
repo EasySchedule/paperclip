@@ -186,6 +186,9 @@ export type IssueThreadInteractionServiceOptions = {
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type InteractionResolutionMutationOptions = {
+  /** Confirmation accept/reject nested in an outer transaction must defer these
+   * effects and flush them with the root database only after its commit. */
+  deferConfirmationCommitEffects?: (effect: (committedDb: Db) => Promise<void>) => void;
   beforeResolveInTransaction?: (tx: DbTransaction) => Promise<void>;
   afterResolveInTransaction?: (
     tx: DbTransaction,
@@ -2359,9 +2362,12 @@ export function issueThreadInteractionService(
         continuationIssue,
       };
     });
-    for (const publication of postCommitActivityPublications)
-      publishActivity(publication);
-    await emitInteractionResolvedTelemetry(db, result.interaction);
+    const publish = async (committedDb: Db) => {
+      for (const publication of postCommitActivityPublications) publishActivity(publication);
+      await emitInteractionResolvedTelemetry(committedDb, result.interaction);
+    };
+    if (args.mutationOptions?.deferConfirmationCommitEffects) args.mutationOptions.deferConfirmationCommitEffects(publish);
+    else await publish(db);
     return result;
   }
 
@@ -2537,7 +2543,9 @@ export function issueThreadInteractionService(
     });
 
     const rejected = hydrateInteraction(updated);
-    await emitInteractionResolvedTelemetry(db, rejected);
+    const publish = (committedDb: Db) => emitInteractionResolvedTelemetry(committedDb, rejected);
+    if (args.mutationOptions?.deferConfirmationCommitEffects) args.mutationOptions.deferConfirmationCommitEffects(publish);
+    else await publish(db);
     return rejected;
   }
 
