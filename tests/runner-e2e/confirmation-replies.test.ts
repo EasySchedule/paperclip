@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { gradeConfirmationReply, assertAmbiguousReplyUnresolved } from "./confirmation-replies.js";
 import { firstTaskScenario } from "./first-task-cases.js";
 import type { FirstTaskEvidence } from "./first-task-scoring.js";
+import { provisionFirstTaskFixtures } from "./first-task-fixtures.js";
 import { runnerMatrix } from "./catalog.js";
 import { parseRunnerSelectors, selectRunnerExecutions } from "./selectors.js";
 
@@ -50,6 +51,17 @@ describe("confirmation-reply independent oracle", () => {
     expect(() => assertAmbiguousReplyUnresolved({ ...e, cards: [{ id: "a", status: "accepted" }, e.cards[1]!] })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, tasks: [{ id: "unauthorized-task" }] })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Both proposals are approved." })).toThrow();
+  });
+  it.each(runnerMatrix.filter(e => e.suite.id === "confirmation-replies" && e.task.flow === "first_task"))("provisions the real onboarding fixture contract for $id", async execution => {
+    const get = vi.fn().mockResolvedValue([{ id: "local", driver: "local" }]);
+    const postSensitive = vi.fn().mockResolvedValue({ id: "secret" });
+    const credential = execution.profile.credential;
+    const fixtures = await provisionFirstTaskFixtures({ api: { get, postSensitive }, execution, nonce: "fixture",
+      company: { id: "company", name: "Garden" }, credentials: { [credential]: "test-credential" } });
+    expect(get).toHaveBeenCalledExactlyOnceWith("/api/companies/company/environments?driver=local");
+    expect(postSensitive).toHaveBeenCalledExactlyOnceWith("/api/companies/company/secrets", expect.objectContaining({ key: credential }));
+    expect(fixtures.agent.id).toBe(""); // The real wizard must still create the agent.
+    expect(JSON.stringify(fixtures)).not.toContain("test-credential");
   });
   it("selects exactly ten explicit-only cases using production native profiles", () => {
     const cells = runnerMatrix.filter(e => e.suite.id === "confirmation-replies");

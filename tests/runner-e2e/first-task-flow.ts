@@ -345,7 +345,7 @@ export async function runFirstTaskFlow(input: {
     const agent = await api.get<Row>(`/api/agents/${fixtures.agent.id}`);
     e.configuredModel = agent.adapterConfig?.model ?? null;
     e.runtimeSettings = {
-      completionDeliveryProbe: execution.suite.id === "completion-updates",
+      completionDeliveryProbe: execution.suite.id === "completion-updates" || (execution.suite.id === "confirmation-replies" && scenario.id !== "reject-no-execution"),
       onboardingRuntime: fixtures.onboardingRuntime,
       adapterType: agent.adapterType,
       adapterConfig: agent.adapterConfig,

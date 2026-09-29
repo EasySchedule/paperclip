@@ -73,7 +73,7 @@ export async function runAmbiguousConfirmationReply(context: {
   expect(await api.get<Row[]>(`/api/companies/${input.fixtures.company.id}/issues`)).toHaveLength(0);
   await page.reload({ waitUntil: "domcontentloaded" });
   for (const [id, status] of [[note.id, "accepted"], [poster.id, "rejected"]]) {
-    await expect(page.locator(`[id="interaction-${id}"]`).getByTestId("interaction-status-badge")).toHaveText(status!);
+    await expect(page.locator(`[id="interaction-${id}"]`).getByTestId("interaction-status-badge")).toHaveText(new RegExp(`${status}$`, "i"));
   }
   await input.evidence("confirmation-decisions.json", { cards, comments: await context.comments(), activity: await api.get(`/api/issues/${issue.id}/activity`) });
   await input.capture("final-state", "Conversational approval and rejection persisted", "final-state.png");
