@@ -58,6 +58,16 @@ describe("confirmation-reply independent oracle", () => {
     expect(() => assertAmbiguousReplyUnresolved({ ...e, tasks: [{ id: "unauthorized-task" }] })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Both proposals are approved." })).toThrow();
   });
+  it("accepts a current structured clarification and rejects stale or unrelated question cards", () => {
+    const question = { id: "question", kind: "ask_user_questions", status: "pending", createdByAgentId: "planner",
+      originCommentIds: ["ambiguous-answer"], payload: { questions: [{ prompt: "Which item(s) does go ahead authorize me to plan?", options: [{ label: "Welcome note only" }, { label: "Poster only" }] }] } };
+    const evidence = { cards: [{ id: "a", status: "pending" }, { id: "b", status: "pending" }, question], originalIds: ["a", "b"], tasks: [], reply: "",
+      agentId: "planner", answerId: "ambiguous-answer" };
+    expect(() => assertAmbiguousReplyUnresolved(evidence)).not.toThrow();
+    for (const patch of [{ originCommentIds: ["old-answer"] }, { createdByAgentId: "other-agent" }, { status: "answered" }, { payload: { questions: [] } }]) {
+      expect(() => assertAmbiguousReplyUnresolved({ ...evidence, cards: [...evidence.cards.slice(0, 2), { ...question, ...patch }] })).toThrow();
+    }
+  });
   it.each(runnerMatrix.filter(e => e.suite.id === "confirmation-replies" && e.task.flow === "first_task"))("provisions the real onboarding fixture contract for $id", async execution => {
     const get = vi.fn().mockResolvedValue([{ id: "local", driver: "local" }]);
     const postSensitive = vi.fn().mockResolvedValue({ id: "secret" });

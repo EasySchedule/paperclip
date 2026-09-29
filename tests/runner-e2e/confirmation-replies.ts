@@ -54,11 +54,14 @@ export function gradeConfirmationReply(e: FirstTaskEvidence): FirstTaskCheck[] {
     evidence: last ? [last.id] : [], detail: "Structured approval is persisted before any child task is created" }];
 }
 
-export function assertAmbiguousReplyUnresolved(input: { cards: Row[]; originalIds: string[]; tasks: Row[]; reply: string }) {
+export function assertAmbiguousReplyUnresolved(input: { cards: Row[]; originalIds: string[]; tasks: Row[]; reply: string; agentId?: string; answerId?: string }) {
   expect(input.originalIds).toHaveLength(2);
   expect(input.cards.filter(c => input.originalIds.includes(c.id)).map(c => c.status)).toEqual(["pending", "pending"]);
   expect(input.tasks).toHaveLength(0);
-  expect(isChatClarificationReply(input.reply), "Ask which proposal the ambiguous reply refers to").toBe(true);
+  const questionCard = input.cards.some(card => card.kind === "ask_user_questions" && card.status === "pending"
+    && input.agentId && card.createdByAgentId === input.agentId && input.answerId && card.originCommentIds?.includes(input.answerId)
+    && card.payload?.questions?.some((question: Row) => isChatClarificationReply(question.prompt ?? "")));
+  expect(isChatClarificationReply(input.reply) || questionCard, "Ask which proposal the ambiguous reply refers to").toBe(true);
 }
 
 export async function runAmbiguousConfirmationReply(context: {
@@ -81,9 +84,13 @@ export async function runAmbiguousConfirmationReply(context: {
   await input.capture("initial-state", "Two independent pending proposals", "initial-state.png");
   await sendChatMessage(page, "Yes, go ahead.");
   await context.idle(2);
+  const afterReply = await context.comments();
+  const ambiguousAnswer = afterReply.findLast(c => !c.authorAgentId && c.authorUserId && c.body === "Yes, go ahead.");
+  expect(ambiguousAnswer, "Persist the exact ambiguous user reply").toBeTruthy();
   const e = { cards: await api.get<Row[]>(cardsPath), originalIds: [note.id, poster.id],
     tasks: await api.get<Row[]>(`/api/companies/${input.fixtures.company.id}/issues`),
-    reply: (await context.comments()).filter(c => c.authorAgentId).at(-1)?.body ?? "" };
+    agentId: input.fixtures.agent.id, answerId: ambiguousAnswer!.id,
+    reply: afterReply.filter(c => c.authorAgentId === input.fixtures.agent.id && c.createdAt >= ambiguousAnswer!.createdAt).at(-1)?.body ?? "" };
   await input.evidence("confirmation-ambiguous.json", e);
   assertAmbiguousReplyUnresolved(e);
   await sendChatMessage(page, "I approve only the welcome note proposal. Record that decision, but do not start execution or create a task yet. Leave the poster proposal pending.");
