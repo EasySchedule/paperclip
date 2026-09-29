@@ -106,6 +106,20 @@ const support = await getEmbeddedPostgresTestSupport();
     await expect(resolveConfirmationFromComment(db, f.args)).rejects.toThrow();
     expect((await readCard(f.card.id)).status).toBe("pending");
   });
+  it.each(["human_only", "not_creator"] as const)("does not promote a user's yes through an additional %s review restriction", async policy => {
+    const f = await seed();
+    await expect(resolveConfirmationFromComment(db, { ...f.args, actor: { ...f.args.actor, resolverPolicyRestriction: policy } })).rejects.toThrow();
+    expect((await readCard(f.card.id)).status).toBe("pending");
+    expect(await audit(f.issueId)).toHaveLength(0);
+  });
+  it("rechecks narrowed permissions on an otherwise matching retry", async () => {
+    const f = await seed();
+    await resolveConfirmationFromComment(db, f.args);
+    await db.update(issueThreadInteractions).set({ effectiveResolverPolicy: "human_only" }).where(eq(issueThreadInteractions.id, f.card.id));
+    await expect(resolveConfirmationFromComment(db, f.args)).rejects.toThrow();
+    expect((await readCard(f.card.id)).resolvedByUserId).toBeNull();
+    expect(await audit(f.issueId)).toHaveLength(1);
+  });
   it("does not borrow checkbox defaults, unknown choices, or insufficient selections", async () => {
     const f = await seed(true);
     for (const selectedOptionIds of [undefined, [], ["unknown"], ["note", "note"]]) {

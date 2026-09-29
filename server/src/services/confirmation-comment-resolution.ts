@@ -9,7 +9,12 @@ import { issueThreadInteractionService } from "./issue-thread-interactions.js";
 
 type ResolutionActor = Parameters<ReturnType<typeof issueThreadInteractionService>["acceptInteraction"]>[3];
 
-/** Persist a conversational answer through the same policy/target checks as a card click. */
+/**
+ * Record the agent's interpretation of a reply, using the agent's own authority.
+ * The message is provenance, not a credential or server-verified proof of consent.
+ * Never promote its author to the resolver: human-only and independent-review
+ * gates must still reject this agent, even when the referenced text says yes.
+ */
 export async function resolveConfirmationFromComment(db: Db, args: {
   companyId: string;
   issueId: string;
