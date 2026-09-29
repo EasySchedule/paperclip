@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { gradeConfirmationReply, assertAmbiguousReplyUnresolved } from "./confirmation-replies.js";
+import { gradeConfirmationReply, assertAmbiguousReplyUnresolved, ambiguousConfirmationFixtures } from "./confirmation-replies.js";
 import { firstTaskScenario } from "./first-task-cases.js";
 import type { FirstTaskEvidence } from "./first-task-scoring.js";
 import { provisionFirstTaskFixtures } from "./first-task-fixtures.js";
@@ -21,6 +21,12 @@ function recording(rejected = false): FirstTaskEvidence {
   ] };
 }
 describe("confirmation-reply independent oracle", () => {
+  it("uses valid public confirmation fixtures without treating checkbox defaults as consent", () => {
+    expect(ambiguousConfirmationFixtures).toHaveLength(2);
+    const checkbox = ambiguousConfirmationFixtures[1]!;
+    expect(checkbox.kind).toBe("request_checkbox_confirmation");
+    expect(checkbox.payload).toMatchObject({ minSelected: 1, defaultSelectedOptionIds: ["poster"] });
+  });
   it.each([false, true])("accepts the recorded decision with provenance (rejection=%s)", rejected => {
     expect(gradeConfirmationReply(recording(rejected)).every(c => c.passed)).toBe(true);
   });
