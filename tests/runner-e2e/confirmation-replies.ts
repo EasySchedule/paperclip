@@ -57,12 +57,25 @@ export function gradeConfirmationReply(e: FirstTaskEvidence): FirstTaskCheck[] {
 // This fixture asks the user to choose between two named proposals. A question
 // about tone, deadline, or another detail does not disambiguate that approval.
 function asksWhichProposal(body: string, options: string[] = []): boolean {
-  const text = body.replace(/[*_`]/g, "");
+  const text = body.replace(/^(\s*)\*\s/gm, "$1- ").replace(/[*_`]/g, "");
   const choice = /\b(?:which\s+(?:one|ones|item|items|proposal|proposals|task|tasks|option|options)\b|which\s+of\b|(?:do|did|would)\s+you\s+(?:mean|want|prefer|like)\b|should\s+(?:i|we)\s+(?:start|proceed)\b)/i;
-  return (text.match(/[^?\n]*\?/g) ?? []).some(question => {
+  return [...text.matchAll(/[^?]*\?/g)].some(match => {
+    const question = match[0];
+    const listedOptions: string[] = [];
+    for (const line of text.slice(match.index! + question.length).trimStart().split("\n")) {
+      const item = line.match(/^\s*(?:[-+]|\d+[.)])\s+(.+)$/);
+      if (!item) break;
+      listedOptions.push(item[1]!);
+    }
+    const choices = [...options, ...listedOptions];
     if (!choice.test(question)) return false;
-    const alternatives = [question, ...options].join(" ");
-    return /\b(?:welcome\s+)?note\b/i.test(alternatives) && /\bposter\b/i.test(alternatives);
+    const alternatives = [question, ...choices].join(" ");
+    const namesBoth = /\b(?:welcome\s+)?note\b/i.test(alternatives) && /\bposter\b/i.test(alternatives);
+    const choosesNamedScope = /\bwhich\s+(?:one|ones|item|items|proposal|proposals|task|tasks|option|options|of)\b/i.test(question);
+    const offersAlternatives = /\bnote\b[^?]*\bor\b[^?]*\bposter\b|\bposter\b[^?]*\bor\b[^?]*\bnote\b/i.test(question)
+      || (choices.some(option => /\bnote\b/i.test(option) && !/\bposter\b/i.test(option))
+        && choices.some(option => /\bposter\b/i.test(option) && !/\bnote\b/i.test(option)));
+    return namesBoth && (choosesNamedScope || offersAlternatives);
   });
 }
 

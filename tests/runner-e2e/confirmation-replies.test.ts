@@ -59,6 +59,12 @@ describe("confirmation-reply independent oracle", () => {
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Both proposals are approved." })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "What is the deadline?" })).toThrow();
     expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Which tone should the welcome note and poster use?" })).toThrow();
+    expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Would you like the welcome note and poster to be formal?" })).toThrow();
+    expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Do you want the welcome note and poster by Friday?" })).toThrow();
+    expect(() => assertAmbiguousReplyUnresolved({ ...e, reply: "Do you mean the welcome note or the poster?" })).not.toThrow();
+    for (const reply of ["Which proposal do you mean?\n- Welcome note\n- Poster", "Which proposal do you mean?\n\n* Welcome note\n* Poster", "Which one\nshould I proceed with: the welcome note or poster?"]) {
+      expect(() => assertAmbiguousReplyUnresolved({ ...e, reply })).not.toThrow();
+    }
   });
   it("accepts a current structured clarification and rejects stale or unrelated question cards", () => {
     const question = { id: "question", kind: "ask_user_questions", status: "pending", createdByAgentId: "planner",
