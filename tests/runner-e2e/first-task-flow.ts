@@ -1,3 +1,4 @@
+import { gradeConfirmationReply } from "./confirmation-replies.js";
 import { firstTaskUserRequest } from "./first-task-transcript.js";
 import { isBlockedUnstartedWake, isTerminalUnstartedWake } from "./non-execution-wake.js";
 import { firstTaskRejectionReplyRecorded, isFirstTaskRejectionCancellation } from "./first-task-rejection.js";
@@ -256,6 +257,7 @@ export async function runFirstTaskFlow(input: {
     };
     e.checkpoints.push(checkpoint);
     e.checks = gradeFirstTask(e);
+    if (execution.suite.id === "confirmation-replies" && scenario.id !== "task-card-accept") e.checks.push(...gradeConfirmationReply(e));
     input.observe(issue, runs, e);
     await input.evidence("first-task.json", e);
     await input.evidence("api-state.json", checkpoint);
@@ -598,7 +600,7 @@ export async function runFirstTaskFlow(input: {
           scenario.id !== "interview-plan-accept",
         );
     }
-    if (execution.suite.id === "completion-updates") {
+    if (execution.suite.id === "completion-updates" || (execution.suite.id === "confirmation-replies" && scenario.id !== "reject-no-execution")) {
       const children = (await api.get<Row[]>(tasksPath)).filter(t => t.parentId === issue.id);
       expect(children).toHaveLength(1);
       const completion = await observeCompletionUpdate({ ...input, sourceId: issue.id, workerId: children[0]!.id,
@@ -607,6 +609,17 @@ export async function runFirstTaskFlow(input: {
       await snapshot("finished");
     }
     e.checks = gradeFirstTask(e);
+    if (execution.suite.id === "confirmation-replies" && scenario.id !== "task-card-accept") {
+      e.checks.push(...gradeConfirmationReply(e));
+      const last = e.checkpoints.at(-1)!;
+      const decisionCard = last.interactions.find(card => card.result?.commentId && ["accepted", "rejected"].includes(card.status));
+      if (decisionCard) {
+        await page.reload({ waitUntil: "domcontentloaded" });
+        const card = page.locator(`[id="interaction-${decisionCard.id}"]`);
+        await expect(card.getByTestId("interaction-status-badge")).toHaveText(new RegExp(decisionCard.status, "i"));
+      }
+      await input.evidence("confirmation-audit.json", await api.get(`/api/issues/${issue.id}/activity`));
+    }
     await input.evidence("first-task.json", e);
     await input.capture(
       "final-state",

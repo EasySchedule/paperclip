@@ -564,7 +564,7 @@ for (const execution of executions) {
     const completionQuality: CompletionQualityRecord[] = [];
     const completionEvidence = async (name: string, data: unknown) => {
       await writeSanitizedJson(snapshotsDir, name, data, secrets);
-      if (execution.suite.id !== "completion-updates" || !name.endsWith("completion-update.json")) return;
+      if (!["completion-updates", "confirmation-replies"].includes(execution.suite.id) || !name.endsWith("completion-update.json")) return;
       const probe = data as { observation?: CompletionObservation };
       if (!probe.observation || !completionDelivery(probe.observation).checks.every(c => c.passed)) return;
       if (!credentials.OPENAI_API_KEY) {
@@ -2544,7 +2544,7 @@ for (const execution of executions) {
         );
       }
       }
-      if (execution.suite.id === "completion-updates" && credentials.OPENAI_API_KEY) {
+      if (["completion-updates", "confirmation-replies"].includes(execution.suite.id) && credentials.OPENAI_API_KEY) {
         const qualification = completionQualityStatus(completionQuality);
         if (qualification === "unqualified") {
           failureClassOverride = "permanent_infrastructure";

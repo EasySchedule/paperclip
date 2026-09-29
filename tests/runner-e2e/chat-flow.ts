@@ -1,3 +1,4 @@
+import { runAmbiguousConfirmationReply } from "./confirmation-replies.js";
 import { expect, type Page } from "@playwright/test";
 import { pollUntil, type RunnerApi } from "./api.js";
 import type {
@@ -430,7 +431,9 @@ export async function runChatFlow(input: ChatFlowInput) {
     expect(await api.get(chatPath)).toBeNull();
     expect(await allRuns()).toHaveLength(0);
 
-    if (caseId.startsWith("handoff-completion-")) {
+    if (caseId === "confirmation-ambiguous") {
+      await runAmbiguousConfirmationReply({ input, issue: () => issue!, idle, comments });
+    } else if (caseId.startsWith("handoff-completion-")) {
       await runChatCompletionUpdate({ input, marker, allRuns, issue: () => issue!,
         refreshIssue: async () => { issue = await api.get<ChatIssue>(chatPath); if (issue) input.observe(issue, await allRuns()); } });
     } else if (execution.suite.id === "agent-chat-qualification") {

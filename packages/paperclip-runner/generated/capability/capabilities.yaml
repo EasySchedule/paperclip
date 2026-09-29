@@ -272,6 +272,15 @@
       "expectedMockState": "runtime_decision_record"
     },
     {
+      "id": "skill:skills/paperclip/SKILL.md:708",
+      "kind": "skill_heading",
+      "sourceAnchor": "skills/paperclip/SKILL.md#L708:conversational-confirmation-answers",
+      "heading": "Conversational confirmation answers",
+      "primaryDisposition": "control_plane_owned",
+      "semanticOperation": "runtime_reconciliation",
+      "expectedMockState": "runtime_decision_record"
+    },
+    {
       "id": "skill:skills/paperclip/references/api-reference.md:1",
       "kind": "skill_heading",
       "sourceAnchor": "skills/paperclip/references/api-reference.md#L1:paperclip-api-reference",
@@ -751,26 +760,26 @@
     {
       "id": "skill:skills/paperclip/references/api-reference.md:1076",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1076:checkbox-confirmations",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1076:conversational-confirmation-answers",
+      "heading": "Conversational confirmation answers",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "scoped_discovery",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "skill:skills/paperclip/references/api-reference.md:1082",
+      "kind": "skill_heading",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1082:checkbox-confirmations",
       "heading": "Checkbox confirmations",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1191",
+      "id": "skill:skills/paperclip/references/api-reference.md:1197",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1191:item-verdict-requests",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1197:item-verdict-requests",
       "heading": "Item verdict requests",
-      "primaryDisposition": "optional_agent_tool",
-      "semanticOperation": "scoped_discovery",
-      "expectedMockState": "operation_result"
-    },
-    {
-      "id": "skill:skills/paperclip/references/api-reference.md:1301",
-      "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1301:checking-approval-status",
-      "heading": "Checking approval status",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
@@ -778,124 +787,133 @@
     {
       "id": "skill:skills/paperclip/references/api-reference.md:1307",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1307:approval-follow-up-requesting-agent",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1307:checking-approval-status",
+      "heading": "Checking approval status",
+      "primaryDisposition": "optional_agent_tool",
+      "semanticOperation": "scoped_discovery",
+      "expectedMockState": "operation_result"
+    },
+    {
+      "id": "skill:skills/paperclip/references/api-reference.md:1313",
+      "kind": "skill_heading",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1313:approval-follow-up-requesting-agent",
       "heading": "Approval follow-up (requesting agent)",
       "primaryDisposition": "control_plane_owned",
       "semanticOperation": "runtime_reconciliation",
       "expectedMockState": "runtime_decision_record"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1325",
+      "id": "skill:skills/paperclip/references/api-reference.md:1331",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1325:issue-lifecycle",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1331:issue-lifecycle",
       "heading": "Issue Lifecycle",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1355",
+      "id": "skill:skills/paperclip/references/api-reference.md:1361",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1355:error-handling",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1361:error-handling",
       "heading": "Error Handling",
       "primaryDisposition": "control_plane_owned",
       "semanticOperation": "runtime_reconciliation",
       "expectedMockState": "runtime_decision_record"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1369",
+      "id": "skill:skills/paperclip/references/api-reference.md:1375",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1369:full-api-reference",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1375:full-api-reference",
       "heading": "Full API Reference",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1371",
+      "id": "skill:skills/paperclip/references/api-reference.md:1377",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1371:agents",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1377:agents",
       "heading": "Agents",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1392",
+      "id": "skill:skills/paperclip/references/api-reference.md:1398",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1392:issues-tasks",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1398:issues-tasks",
       "heading": "Issues (Tasks)",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1432",
+      "id": "skill:skills/paperclip/references/api-reference.md:1439",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1432:companies-projects-goals",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1439:companies-projects-goals",
       "heading": "Companies, Projects, Goals",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1456",
+      "id": "skill:skills/paperclip/references/api-reference.md:1463",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1456:routines",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1463:routines",
       "heading": "Routines",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1472",
+      "id": "skill:skills/paperclip/references/api-reference.md:1479",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1472:approvals-costs-activity-dashboard",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1479:approvals-costs-activity-dashboard",
       "heading": "Approvals, Costs, Activity, Dashboard",
       "primaryDisposition": "control_plane_owned",
       "semanticOperation": "runtime_reconciliation",
       "expectedMockState": "runtime_decision_record"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1494",
+      "id": "skill:skills/paperclip/references/api-reference.md:1501",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1494:secrets",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1501:secrets",
       "heading": "Secrets",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1507",
+      "id": "skill:skills/paperclip/references/api-reference.md:1514",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1507:agent-secret-proposals",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1514:agent-secret-proposals",
       "heading": "Agent secret proposals",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1560",
+      "id": "skill:skills/paperclip/references/api-reference.md:1567",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1560:re-bind-an-existing-secret-under-a-new-path-no-secret-id",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1567:re-bind-an-existing-secret-under-a-new-path-no-secret-id",
       "heading": "Re-bind an existing secret under a new path (no secret ID)",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1607",
+      "id": "skill:skills/paperclip/references/api-reference.md:1614",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1607:agent-secret-access",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1614:agent-secret-access",
       "heading": "Agent secret access",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
       "expectedMockState": "operation_result"
     },
     {
-      "id": "skill:skills/paperclip/references/api-reference.md:1647",
+      "id": "skill:skills/paperclip/references/api-reference.md:1654",
       "kind": "skill_heading",
-      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1647:common-mistakes",
+      "sourceAnchor": "skills/paperclip/references/api-reference.md#L1654:common-mistakes",
       "heading": "Common Mistakes",
       "primaryDisposition": "optional_agent_tool",
       "semanticOperation": "scoped_discovery",
