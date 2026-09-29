@@ -1,3 +1,4 @@
+import { runsCompletionUpdateProbe } from "./completion-quality.js";
 import { gradeConfirmationReply, assertConfirmationReceipt } from "./confirmation-replies.js";
 import { firstTaskUserRequest } from "./first-task-transcript.js";
 import { isBlockedUnstartedWake, isTerminalUnstartedWake } from "./non-execution-wake.js";
@@ -345,7 +346,7 @@ export async function runFirstTaskFlow(input: {
     const agent = await api.get<Row>(`/api/agents/${fixtures.agent.id}`);
     e.configuredModel = agent.adapterConfig?.model ?? null;
     e.runtimeSettings = {
-      completionDeliveryProbe: execution.suite.id === "completion-updates" || (execution.suite.id === "confirmation-replies" && scenario.id !== "reject-no-execution"),
+      completionDeliveryProbe: runsCompletionUpdateProbe(execution),
       onboardingRuntime: fixtures.onboardingRuntime,
       adapterType: agent.adapterType,
       adapterConfig: agent.adapterConfig,
@@ -609,7 +610,7 @@ export async function runFirstTaskFlow(input: {
       }
       await input.evidence("confirmation-audit.json", await api.get(`/api/issues/${issue.id}/activity`));
     }
-    if (execution.suite.id === "completion-updates" || (execution.suite.id === "confirmation-replies" && scenario.id !== "reject-no-execution")) {
+    if (runsCompletionUpdateProbe(execution)) {
       const children = (await api.get<Row[]>(tasksPath)).filter(t => t.parentId === issue.id);
       expect(children).toHaveLength(1);
       const completion = await observeCompletionUpdate({ ...input, sourceId: issue.id, workerId: children[0]!.id,

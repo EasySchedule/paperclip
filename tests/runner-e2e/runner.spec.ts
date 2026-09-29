@@ -1,4 +1,4 @@
-import { completionQualityControls, completionQualityStatus, judgeCompletionQuality, reserveCompletionQuality, type CompletionQualityRecord } from "./completion-quality.js";
+import { runsCompletionUpdateProbe, completionQualityControls, completionQualityStatus, judgeCompletionQuality, reserveCompletionQuality, type CompletionQualityRecord } from "./completion-quality.js";
 import { completionDelivery, type CompletionObservation } from "./completion-updates.js";
 import { runInstructionPersistenceFlow } from "./instruction-persistence.js";
 import { gradeApiResponsePaging, readResponseProof, responseEvidenceDescription } from "./api-response-reading.js";
@@ -2544,7 +2544,7 @@ for (const execution of executions) {
         );
       }
       }
-      if (["completion-updates", "confirmation-replies"].includes(execution.suite.id) && credentials.OPENAI_API_KEY) {
+      if (runsCompletionUpdateProbe(execution) && credentials.OPENAI_API_KEY) {
         const qualification = completionQualityStatus(completionQuality);
         if (qualification === "unqualified") {
           failureClassOverride = "permanent_infrastructure";
