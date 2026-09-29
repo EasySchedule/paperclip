@@ -43,6 +43,9 @@ persona. The ambiguity fixture creates ordinary board cards through the public
 API, sends "Yes, go ahead" through the browser, requires both to stay pending
 with a clarification reply and no execution, then approves only one and rejects
 the other through separate browser messages.
+Clarification may be a fresh chat reply or a source-bound question card, including
+a native question-set description and its proposal choices. A generic question
+about tone or deadlines is not evidence that the ambiguous approval was clarified.
 
 The independent oracle requires the exact original card to hold the decision,
 source user-comment ID and resolving agent/run. Acceptance must precede child

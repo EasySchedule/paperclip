@@ -72,6 +72,15 @@ describe("confirmation-reply independent oracle", () => {
     const evidence = { cards: [{ id: "a", status: "pending" }, { id: "b", status: "pending" }, question], originalIds: ["a", "b"], tasks: [], reply: "",
       agentId: "planner", answerId: "ambiguous-answer" };
     expect(() => assertAmbiguousReplyUnresolved(evidence)).not.toThrow();
+    expect(() => assertAmbiguousReplyUnresolved({ ...evidence, cards: [...evidence.cards.slice(0, 2), { ...question,
+      payload: { questions: [{ prompt: "Which garden club item should I move forward with?", options: [{ label: "Welcome note" }, { label: "Poster" }] }] },
+    }] })).not.toThrow();
+    const native = { ...question, payload: { questionSet: { description: "Which item(s) would you like me to start developing a plan for?",
+      questions: [{ prompt: "Scope", options: [{ label: "Welcome note only" }, { label: "Poster only" }, { label: "Both" }] }] } } };
+    expect(() => assertAmbiguousReplyUnresolved({ ...evidence, cards: [...evidence.cards.slice(0, 2), native] })).not.toThrow();
+    expect(() => assertAmbiguousReplyUnresolved({ ...evidence, cards: [...evidence.cards.slice(0, 2), { ...native,
+      payload: { questionSet: { ...native.payload.questionSet, description: "What is the deadline?" } },
+    }] })).toThrow();
     for (const patch of [{ originCommentIds: ["old-answer"] }, { createdByAgentId: "other-agent" }, { status: "answered" }, { payload: { questions: [] } }, { payload: { questions: [{ prompt: "What is the deadline?" }] } }, { payload: { questions: [{ prompt: "Which tone should the welcome note and poster use?", options: [{ label: "Warm" }, { label: "Formal" }] }] } }]) {
       expect(() => assertAmbiguousReplyUnresolved({ ...evidence, cards: [...evidence.cards.slice(0, 2), { ...question, ...patch }] })).toThrow();
     }

@@ -58,7 +58,8 @@ export function gradeConfirmationReply(e: FirstTaskEvidence): FirstTaskCheck[] {
 // about tone, deadline, or another detail does not disambiguate that approval.
 function asksWhichProposal(body: string, options: string[] = []): boolean {
   const text = body.replace(/^(\s*)\*\s/gm, "$1- ").replace(/[*_`]/g, "");
-  const choice = /\b(?:which\s+(?:one|ones|item|items|proposal|proposals|task|tasks|option|options)\b|which\s+of\b|(?:do|did|would)\s+you\s+(?:mean|want|prefer|like)\b|should\s+(?:i|we)\s+(?:start|proceed)\b)/i;
+  const scopedChoice = /\bwhich\s+(?:[a-z-]+\s+){0,4}(?:one|ones|item|items|proposal|proposals|task|tasks|option|options|of)\b/i;
+  const intendedChoice = /\b(?:(?:do|did|would)\s+you\s+(?:mean|want|prefer|like)\b|should\s+(?:i|we)\s+(?:start|proceed)\b)/i;
   return [...text.matchAll(/[^?]*\?/g)].some(match => {
     const question = match[0];
     const listedOptions: string[] = [];
@@ -68,14 +69,14 @@ function asksWhichProposal(body: string, options: string[] = []): boolean {
       listedOptions.push(item[1]!);
     }
     const choices = [...options, ...listedOptions];
-    if (!choice.test(question)) return false;
     const alternatives = [question, ...choices].join(" ");
     const namesBoth = /\b(?:welcome\s+)?note\b/i.test(alternatives) && /\bposter\b/i.test(alternatives);
-    const choosesNamedScope = /\bwhich\s+(?:one|ones|item|items|proposal|proposals|task|tasks|option|options|of)\b/i.test(question);
+    const choosesNamedScope = scopedChoice.test(question);
     const offersAlternatives = /\bnote\b[^?]*\bor\b[^?]*\bposter\b|\bposter\b[^?]*\bor\b[^?]*\bnote\b/i.test(question)
       || (choices.some(option => /\bnote\b/i.test(option) && !/\bposter\b/i.test(option))
         && choices.some(option => /\bposter\b/i.test(option) && !/\bnote\b/i.test(option)));
-    return namesBoth && (choosesNamedScope || offersAlternatives);
+    return namesBoth && (choosesNamedScope || (offersAlternatives && intendedChoice.test(question))
+      || (choices.length > 0 && offersAlternatives && /\b(?:which|choose|pick|select)\b/i.test(question)));
   });
 }
 
@@ -85,7 +86,9 @@ export function assertAmbiguousReplyUnresolved(input: { cards: Row[]; originalId
   expect(input.tasks).toHaveLength(0);
   const questionCard = input.cards.some(card => card.kind === "ask_user_questions" && card.status === "pending"
     && input.agentId && card.createdByAgentId === input.agentId && input.answerId && card.originCommentIds?.includes(input.answerId)
-    && card.payload?.questions?.some((question: Row) => asksWhichProposal(question.prompt ?? "", (question.options ?? []).map((option: Row) => option.label ?? ""))));
+    && (card.payload?.questionSet?.questions ?? card.payload?.questions ?? []).some((question: Row) => asksWhichProposal(
+      [card.payload?.questionSet?.description, question.prompt].filter(Boolean).join("\n"),
+      (question.options ?? []).map((option: Row) => option.label ?? ""))));
   expect(asksWhichProposal(input.reply) || questionCard, "Ask which proposal the ambiguous reply refers to").toBe(true);
 }
 
