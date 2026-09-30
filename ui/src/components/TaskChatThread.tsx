@@ -897,6 +897,9 @@ export function TaskChatThread(props: TaskChatThreadProps) {
   } = useNativeRunTranscripts(nativeRuns);
   const logRuns = useMemo(() => runs.filter((run) =>
     run.runtimeMode !== "native" ||
+    // Active runs still need the websocket log stream. Only settled native
+    // history can skip the legacy transport when event history is available.
+    run.status === "running" || run.status === "queued" ||
     nativeTranscriptErrorsByRun.has(run.id) ||
     (hydratedNativeRunIds?.has(run.id) &&
       (nativeTranscriptByRun.get(run.id)?.length ?? 0) === 0)

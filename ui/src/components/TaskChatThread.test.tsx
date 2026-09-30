@@ -604,6 +604,24 @@ describe("TaskChatThread draft pass-through", () => {
 });
 
 describe("TaskChatThread runtime transcript selection", () => {
+  it.each(["queued", "running"])("retains the live log transport for a %s native run with event history", (status) => {
+    nativeTranscriptState.hydratedRunIds = new Set(["native-run"]);
+    nativeTranscriptState.transcriptByRun.set("native-run", [
+      { kind: "assistant", text: "Native progress", ts: "2026-08-25T18:00:01.000Z", channel: "progress" },
+    ]);
+    const props = {
+      issueId: "native-live", comments: [], onAdd: async () => {},
+      linkedRuns: [{ runId: "native-run", runtimeMode: "native" as const,
+        status, agentId: "agent-1", adapterType: "paperclip_runner",
+        createdAt: "2026-08-25T18:00:00.000Z", startedAt: "2026-08-25T18:00:00.000Z" }],
+    };
+    render(<TaskChatThread {...props} />);
+    expect(transcriptHookRuns.legacy.at(-1)).toMatchObject([{ id: "native-run", status }]);
+
+    render(<TaskChatThread {...props} linkedRuns={[{ ...props.linkedRuns[0], status: "succeeded" }]} />);
+    expect(transcriptHookRuns.legacy.at(-1)).toEqual([]);
+  });
+
   it("does not download fallback logs until native events are empty or fail", () => {
     const props = {
       issueId: "native-history", comments: [], onAdd: async () => {},
