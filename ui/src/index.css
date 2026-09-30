@@ -22,12 +22,6 @@
 
 /* Shared file tree: preserve desktop indentation and leave room for labels on
    narrow screens, including deeply nested skill packages. */
-:root {
-  --file-tree-indent-base: calc(var(--spacing) * 2);
-  --file-tree-indent-step: calc(var(--spacing) * 6);
-  --file-tree-indent-max: 40%;
-}
-
 .file-tree-row {
   padding-inline-start: min(calc(var(--file-tree-indent-base) + var(--file-tree-depth) * var(--file-tree-indent-step)), var(--file-tree-indent-max));
 }
@@ -98,6 +92,9 @@
 
 :root {
   color-scheme: light;
+  --file-tree-indent-base: calc(var(--spacing) * 2);
+  --file-tree-indent-step: calc(var(--spacing) * 6);
+  --file-tree-indent-max: 40%;
   --radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
