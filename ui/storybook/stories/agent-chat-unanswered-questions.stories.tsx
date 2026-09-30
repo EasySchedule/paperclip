@@ -52,7 +52,13 @@ function QuestionChat({ movedOn = false, multiple = false, answered = false }: {
     />
   </div>;
 }
-const meta = { title: "Chat & Comments/Agent Chat Unanswered Questions", parameters: { layout: "fullscreen" }, component: QuestionChat } satisfies Meta<typeof QuestionChat>;
+const meta = { title: "Chat & Comments/Agent Chat Unanswered Questions", parameters: { layout: "fullscreen" }, component: QuestionChat,
+  beforeEach: () => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.includes(`paperclip:task-input:${question.issueId}:`)) localStorage.removeItem(key);
+    }
+  },
+} satisfies Meta<typeof QuestionChat>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 export const JustAsked: Story = { args: {} };
@@ -78,3 +84,13 @@ export const AnswerLater: Story = { args: { movedOn: true }, play: async ({ canv
 export const MultipleUnanswered: Story = { args: { multiple: true } };
 export const AnsweredHistory: Story = { args: { answered: true } };
 export const Mobile: Story = { args: { movedOn: true }, globals: { viewport: { value: "mobile", isRotated: false } } };
+
+export const MoveOnWithoutAnswering: Story = { args: {}, play: async ({ canvasElement }) => {
+  const canvas = within(canvasElement);
+  await userEvent.click(canvas.getByRole("radio", { name: "Green" }));
+  await userEvent.type(canvas.getByRole("textbox", { name: "editable markdown" }), "Leave that for later. Tell me about tasks.");
+  await userEvent.click(canvas.getByRole("button", { name: /^Send$/ }));
+  await expect(canvas.queryByTestId("task-chat-composer-takeover")).not.toBeInTheDocument();
+  await userEvent.click(canvas.getByTestId("task-chat-unanswered-question"));
+  await expect(canvas.getByRole("radio", { name: "Green" })).toBeChecked();
+} };

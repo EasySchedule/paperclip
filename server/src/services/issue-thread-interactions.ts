@@ -3645,10 +3645,7 @@ export function issueThreadInteractionService(
                 eq(issueThreadInteractions.createdByAgentId, actor.agentId),
                 eq(issueThreadInteractions.status, "pending"),
                 ne(issueThreadInteractions.id, row.id),
-                // Keep unanswered questions from earlier conversation turns.
-                // Same-turn duplicate projections may still replace one another.
-                data.kind === "ask_user_questions" && issueRow.conversationAgentId && issueRow.conversationUserId
-                  ? eq(issueThreadInteractions.sourceRunId, data.sourceRunId!) : undefined,
+
               ),
             )
             .returning();

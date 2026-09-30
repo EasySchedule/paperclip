@@ -42,6 +42,7 @@ const DIRECT_ADAPTER_TYPES = [
   "http",
   "custom_plugin",
 ] as const;
+const editorCallbacks = vi.hoisted(() => ({ change: (_value: string) => {} }));
 const streamlinedState = vi.hoisted(() => ({ enabled: true }));
 
 vi.mock("@/components/transcript/useLiveRunTranscripts", () => ({
@@ -92,13 +93,14 @@ vi.mock("@/lib/router", () => ({
 }));
 vi.mock("@/components/MarkdownEditor", () => ({
   MarkdownEditor: forwardRef(function MockMarkdownEditor(
-    { value }: { value: string },
+    { value, onChange }: { value: string; onChange: (value: string) => void },
     ref: ForwardedRef<unknown>,
   ) {
     useImperativeHandle(ref, () => ({
       insertMarkdown: () => {},
       focus: () => {},
     }));
+    editorCallbacks.change = onChange;
     return <div data-testid="mock-editor">{value}</div>;
   }),
 }));
@@ -2743,6 +2745,24 @@ describe("Agent Chat unanswered question history", () => {
     expect(takeover()?.textContent).toContain("Which color?");
     render(<TaskChatThread {...props} comments={[...movedOn]} interactions={[nativeOld, newer]} />);
     expect(takeover()?.textContent).toContain("Which color?");
+  });
+
+  it.each([true, false])("only collapses the question after a successful send (success=%s)", async success => {
+    const onAdd = success ? vi.fn().mockResolvedValue(undefined) : vi.fn().mockRejectedValue(new Error("Message not sent"));
+    render(<TaskChatThread {...props} comments={[]} interactions={[old]} onAdd={onAdd} />);
+    await click("Yes");
+    await act(async () => editorCallbacks.change("Let's talk about tasks instead."));
+    const send = container.querySelector<HTMLButtonElement>('[data-testid="task-chat-composer-send"]');
+    expect(send?.disabled).toBe(false);
+    await act(async () => send!.click());
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    if (success) {
+      expect(takeover()).toBeNull();
+      await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="task-chat-unanswered-question"]')!.click());
+    }
+    expect(takeover()).not.toBeNull();
+    expect(takeover()?.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toContain("Yes");
+    expect(container.querySelector('[data-testid="task-chat-unanswered-question"]')).not.toBeNull();
   });
 
   it("does not change ordinary task question behavior", () => {
