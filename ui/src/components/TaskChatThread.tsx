@@ -2473,11 +2473,6 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     pendingComposerInputs.find((input) => input.key === selectedPendingKey) ??
     currentPendingInputs[0] ??
     null;
-  // History cards own old questions. Include one in the takeover controls only
-  // while it is explicitly selected, never in the composer's pending reminder.
-  const takeoverPendingInputs = selectedPendingInput && !currentPendingKeys.has(selectedPendingInput.key)
-    ? [selectedPendingInput, ...currentPendingInputs]
-    : currentPendingInputs;
   const interactionDraftKey = selectedPendingInput
     ? `paperclip:task-input:${issueId ?? "unknown"}:${selectedPendingInput.key}`
     : undefined;
@@ -2488,15 +2483,15 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     setTakeoverMode("open");
   }, [currentPendingInputs, currentPendingKeys, selectedPendingInput]);
   const showNextPendingInput = useCallback(() => {
-    if (takeoverPendingInputs.length < 2) return;
-    const currentIndex = takeoverPendingInputs.findIndex(
+    if (currentPendingInputs.length < 2) return;
+    const currentIndex = currentPendingInputs.findIndex(
       (input) => input.key === selectedPendingInput?.key,
     );
     setSelectedPendingKey(
-      takeoverPendingInputs[(currentIndex + 1) % takeoverPendingInputs.length]
+      currentPendingInputs[(currentIndex + 1) % currentPendingInputs.length]
         ?.key ?? null,
     );
-  }, [takeoverPendingInputs, selectedPendingInput?.key]);
+  }, [currentPendingInputs, selectedPendingInput?.key]);
   const skipPendingInput = useCallback(
     async (input: PendingComposerInput) => {
       if (input.kind === "runtime") {
@@ -2726,7 +2721,8 @@ export function TaskChatThread(props: TaskChatThreadProps) {
             selectedPendingInput.kind === "durable" &&
             selectedPendingInput.interaction.kind === "request_confirmation" &&
             Boolean(selectedPendingInput.interaction.payload.toolAction),
-          pendingCount: takeoverPendingInputs.length,
+          // A reopened history question does not rejoin the pending-input queue.
+          pendingCount: Math.max(1, currentPendingInputs.length),
           content: takeoverContent,
           onDismiss: () => setTakeoverMode("normal"),
           onSkip: () => skipPendingInput(selectedPendingInput),

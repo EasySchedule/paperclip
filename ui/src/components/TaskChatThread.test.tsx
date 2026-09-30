@@ -2765,6 +2765,8 @@ describe("Agent Chat unanswered question history", () => {
     expect(takeover()?.textContent).toContain("Which size?");
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
     expect(takeover()?.textContent).toContain("Which color?");
+    expect(takeover()?.textContent).toContain("2 pending");
+    expect(takeover()?.textContent).not.toContain("3 pending");
     await dismiss();
     expect(pendingIndicator()?.textContent).toContain("2 pending inputs");
     await act(async () => pendingIndicator()!.click());
@@ -2778,8 +2780,13 @@ describe("Agent Chat unanswered question history", () => {
     const oldRow = container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]');
     await act(async () => oldRow!.click());
     expect(takeover()?.textContent).toContain("Which color?");
+    expect(takeover()?.textContent).not.toContain("2 pending");
     render(<TaskChatThread {...props} comments={[...movedOn]} interactions={[nativeOld, newer]} />);
     expect(takeover()?.textContent).toContain("Which color?");
+    await dismiss();
+    expect(pendingIndicator()?.textContent).toContain("1 pending input");
+    await act(async () => pendingIndicator()!.click());
+    expect(takeover()?.textContent).toContain("Which tone?");
   });
 
   it.each([true, false])("only collapses the question after a successful send (success=%s)", async success => {
