@@ -1,6 +1,7 @@
 import { chatConfirmationTasks } from "./chat-cases.js";
 import { instructionPersistenceTask } from "./instruction-persistence.js";
 import { apiResponseReadingTask } from "./api-response-reading.js";
+import { blockerTasks, blockerProfile } from "./blocker-cases.js";
 import { accountingTasks } from "./accounting-cases.js";
 import { continuationTasks } from "./continuation-cases.js";
 import { contextIntegrityTasks } from "./context-integrity-cases.js";
@@ -1046,6 +1047,13 @@ export const extendedHarnessFileTask: RunnerTaskFixture = {
 
 export const runnerSuites: readonly RunnerSuiteFixture[] = [
   {
+    id: "blocker-guidance", label: "Direct blocker handling", manualOnly: true,
+    description: "Human authority, hiring permissions, and requester scope under the production coordination skill.",
+    groups: ["legacy"], profiles: runnerProfiles.filter(p => ["legacy-codex", "legacy-claude"].includes(p.id)).map(blockerProfile),
+    environments: [localEnvironment], tasks: blockerTasks, expectedMatrixSize: 6,
+    definitionMetadata: { version: 1, instructions: "production-coordination-skill", grading: "saved-human-decision-ownership-and-resume", scheduling: "explicit-only" },
+  },
+  {
     id: "extended-harnesses", label: "Extended ACP harnesses", manualOnly: true,
     description: "Explicit candidate qualification through real Paperclip tools, browser interactions, file edits and restart recovery.",
     groups: ["native"], profiles: extendedHarnessProfiles, environments: runnerEnvironments,
@@ -1443,6 +1451,7 @@ export function validateRunnerCatalog(): MatrixExecution[] {
   const allTasks = [
     extendedHarnessFileTask,
     ...contextIntegrityTasks,
+    ...blockerTasks,
     ...accountingTasks,
     ...lifecycleLiveTasks,
     ...continuationTasks,
