@@ -138,9 +138,9 @@ describe("unanswered question workflow oracle", () => {
     original: { id: "color", status: "pending", payload: { questions: [{ options: [{ id: "blue", label: "Blue" }, { id: "green", label: "Green" }] }] } },
     afterMove: { id: "color", status: "pending", result: null, resolvedAt: null },
     afterAnswer: { id: "color", status: "answered", resolvedByUserId: "user", resolvedAt: "2026-09-01T12:02:00Z", result: { answers: [{ optionIds: ["blue"] }] } },
-    unrelatedComment: { authorUserId: "user", createdAt: "2026-09-01T12:00:00Z" },
-    unrelatedReply: { authorAgentId: "agent", body: "Paris.", createdAt: "2026-09-01T12:01:00Z" },
-    lateReply: { authorAgentId: "agent", createdByRunId: "later-run", body: "Blue it is.", createdAt: "2026-09-01T12:03:00Z" }, taskCount: 0,
+    unrelatedComment: { id: "unrelated-comment", authorUserId: "user", createdAt: "2026-09-01T12:00:00Z" },
+    unrelatedReply: { id: "unrelated-reply", authorAgentId: "agent", body: "Paris.", createdAt: "2026-09-01T12:01:00Z" },
+    lateReply: { id: "late-reply", authorAgentId: "agent", createdByRunId: "later-run", body: "Blue it is.", createdAt: "2026-09-01T12:03:00Z" }, taskCount: 0,
   });
   it("accepts the independently saved workflow", () => expect(gradeUnansweredQuestion(good()).every(check => check.passed)).toBe(true));
   it.each(["expired", "wrong-question", "missing-reply", "stale-reply", "wrong-answer", "missing-late-reply", "old-acknowledgement", "invented-work"])("rejects %s", kind => {
