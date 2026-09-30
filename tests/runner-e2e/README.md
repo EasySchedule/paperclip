@@ -1351,3 +1351,5 @@ candidate image and the matching controller-owned provider pack described in
 The separate Runner Evals `extended-harnesses` campaign lives in the private
 `paperclip-evals` repository and grades semantic protocol behavior against the
 mock control plane. Neither suite substitutes for the other.
+
+The explicit-only `confirmation-replies` suite also includes `unanswered-question-return` for native Claude and Codex (three provider turns). The browser asks a saved color question, sends an unrelated message, verifies the reply while the original stays pending, reloads, reopens the history entry, submits Blue, and verifies the saved answer plus a later agent acknowledgement. It checks that no tasks were created. Unique, UI-ready screenshots show each checkpoint; individual checks are included in the report. This is a bounded mechanical workflow check, not broader semantic answer-quality qualification.

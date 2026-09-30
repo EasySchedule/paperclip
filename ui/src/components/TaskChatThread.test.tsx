@@ -2664,6 +2664,56 @@ describe("TaskChatThread runtime transcript selection", () => {
   );
 });
 
+describe("Agent Chat unanswered question history", () => {
+  const old = questionInteraction("old", "Which color?", "2026-08-15T12:00:01Z");
+  const newer = questionInteraction("new", "Which tone?", "2026-08-15T12:05:00Z");
+  const movedOn = createLongThreadComments();
+  const props = { conversationMode: true, issueId: "issue-1", onAdd: async () => {}, onSubmitInteractionAnswers: vi.fn() };
+  const takeover = () => container.querySelector('[data-testid="task-chat-composer-takeover"]');
+  const click = async (text: string) => {
+    const button = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent?.trim() === text);
+    expect(button).toBeTruthy();
+    await act(async () => button!.click());
+  };
+
+  it("leaves a compact, reopenable question on reload after moving on", async () => {
+    render(<TaskChatThread {...props} comments={movedOn} interactions={[old]} />);
+    expect(takeover()).toBeNull();
+    const row = container.querySelector<HTMLButtonElement>('[data-testid="task-chat-unanswered-question"]');
+    expect(row?.textContent).toContain("Which color?");
+    await act(async () => row!.click());
+    expect(takeover()?.textContent).toContain("Which color?");
+    await click("Yes");
+    await click("Submit answers");
+    expect(props.onSubmitInteractionAnswers).toHaveBeenCalledWith(old, [{ questionId: "old-question", optionIds: ["yes"] }]);
+  });
+
+  it("collapses a displayed question when a new user message arrives", async () => {
+    render(<TaskChatThread {...props} comments={[]} interactions={[old]} />);
+    expect(takeover()).not.toBeNull();
+    await act(async () => render(<TaskChatThread {...props} comments={movedOn} interactions={[old]} />));
+    expect(takeover()).toBeNull();
+    expect(container.querySelector('[data-testid="task-chat-unanswered-question"]')).not.toBeNull();
+  });
+
+  it("opens the new question but can reopen the exact historical native question", async () => {
+    const nativeOld = { ...old, sourceRunId: "old-run", payload: { ...old.payload, runtimeRequestId: "old-request" } } as IssueThreadInteraction;
+    render(<TaskChatThread {...props} comments={movedOn} interactions={[nativeOld, newer]} />);
+    expect(takeover()?.textContent).toContain("Which tone?");
+    const oldRow = container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]');
+    await act(async () => oldRow!.click());
+    expect(takeover()?.textContent).toContain("Which color?");
+    render(<TaskChatThread {...props} comments={[...movedOn]} interactions={[nativeOld, newer]} />);
+    expect(takeover()?.textContent).toContain("Which color?");
+  });
+
+  it("does not change ordinary task question behavior", () => {
+    render(<TaskChatThread {...props} conversationMode={false} comments={movedOn} interactions={[old]} />);
+    expect(takeover()?.textContent).toContain("Which color?");
+    expect(container.querySelector('[data-testid="task-chat-unanswered-question"]')).toBeNull();
+  });
+});
+
 describe("TaskChatThread composer alignment", () => {
   it("matches the thread width at every breakpoint", () => {
     render(<TaskChatThread comments={[]} onAdd={async () => {}} />);

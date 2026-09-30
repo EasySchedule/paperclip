@@ -19,7 +19,7 @@ import { toolActionDeliveryService } from "./tool-action-delivery.js";
 import { githubBotConnectionIdsForRun } from "./chat-github-tools.js";
 import { readQueuedInteractionResponse } from "./queued-interaction-response.js";
 import { AGENT_CHAT_DIRECTIVE, conversationReplay, isConversation, isConversationExecutionWake, isWaitingConversation, prepareConversationTurn, settleConversationTurn } from "./agent-conversations.js";
-import { getConversationConfirmationContext, hasRecordedConversationConfirmationReply, type ConversationConfirmationContext } from "./conversation-confirmation-context.js";
+import { getConversationConfirmationContext, type ConversationConfirmationContext } from "./conversation-confirmation-context.js";
 import { PROCESS_IDENTITY_RECORDED, recordNativeLocalProcessStop } from "./native-local-process-stop.js";
 import { hasAcknowledgedNativeReassignmentStopIntent, hasAcknowledgedNativeStopIntent, isAcknowledgedNativeStop, acknowledgedNativeStopExecutionHasStopped } from "./acknowledged-native-stop.js";
 import { legacyControllerBootId, legacyControllerClaim, renewLegacyControllerLease, hasLiveLegacyController, revokeExpiredLegacyController, watchLegacyControllerLease } from "./legacy-controller-lease.js";
@@ -347,7 +347,6 @@ import {
   mergeHeartbeatRunResultJson,
   readCompletedAssistantMessageCandidate,
   resolveHeartbeatRunResponse,
-  canPublishCompletedConversationReply,
   selectHeartbeatRunFinalAgentMessage,
   summarizeRunErrorForModel,
   type RunPresentationDecision,
@@ -25347,18 +25346,8 @@ export function heartbeatService(
             );
             const resolved = resolveHeartbeatRunResponse({
               resultJson: persistedResultJson,
-              conversationTurnFinished: canPublishCompletedConversationReply({
-                conversation: isConversation(issueContext), runStatus: livenessRun.status,
-                resultJson: persistedResultJson, finalAgentMessage,
-                recordedConfirmationReply: Boolean(isConversation(issueContext) && issueId && livenessRun.status === "succeeded"
-                  && persistedResultJson?.finalizationReasonCode === "governed_response_waiting" && finalAgentMessage?.channel === "final"
-                  && await hasRecordedConversationConfirmationReply({ db, companyId: livenessRun.companyId, issueId,
-                    agentId: livenessRun.agentId, runId: livenessRun.id,
-                    commentId: readNonEmptyString(livenessRun.contextSnapshot?.wakeCommentId)
-                      ?? readNonEmptyString(livenessRun.contextSnapshot?.commentId),
-                    sessionGeneration: livenessRun.contextSnapshot?.conversationSessionGeneration,
-                  })),
-              }),
+              conversationTurnFinished: isConversation(issueContext) && livenessRun.status === "succeeded"
+                && persistedResultJson?.finalizationReasonCode === "conversation_turn_finished",
               existingComment: existingRunComment,
               finalAgentMessage,
               preferFinalResponseOverExistingComment:

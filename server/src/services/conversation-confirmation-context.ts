@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, sql } from "drizzle-orm";
 import { issueComments, issues, issueThreadInteractions, type Db } from "@paperclipai/db";
 
 /** Supply current card identities even when they were created outside the provider session. */
@@ -43,35 +43,3 @@ export async function getConversationConfirmationContext(input: {
 }
 
 export type ConversationConfirmationContext = Awaited<ReturnType<typeof getConversationConfirmationContext>>;
-
-/** Server-only presentation evidence, never a claim taken from provider JSON. */
-export async function hasRecordedConversationConfirmationReply(input: {
-  db: Db; companyId: string; issueId: string; agentId: string; runId: string;
-  commentId: string | null; sessionGeneration: unknown;
-}) {
-  if (!input.commentId || typeof input.sessionGeneration !== "number") return false;
-  const [card] = await input.db.select({ id: issueThreadInteractions.id }).from(issueThreadInteractions)
-    .innerJoin(issues, eq(issues.id, issueThreadInteractions.issueId)).where(and(
-      eq(issues.id, input.issueId), eq(issues.companyId, input.companyId),
-      eq(issues.conversationAgentId, input.agentId), isNotNull(issues.conversationUserId),
-      // Native commit may already have released checkout; a newer owner must
-      // not inherit publication authority from this older decision.
-      or(isNull(issues.executionRunId), eq(issues.executionRunId, input.runId)),
-      eq(issues.conversationSessionGeneration, input.sessionGeneration),
-      eq(issueThreadInteractions.companyId, input.companyId),
-      eq(issueThreadInteractions.resolvedByAgentId, input.agentId), eq(issueThreadInteractions.resolvedByRunId, input.runId),
-      inArray(issueThreadInteractions.kind, ["request_confirmation", "request_checkbox_confirmation"]),
-      inArray(issueThreadInteractions.status, ["accepted", "rejected"]),
-      sql`${issueThreadInteractions.result}->>'commentId' = ${input.commentId}`,
-      sql`${issueThreadInteractions.result}->>'outcome' = ${issueThreadInteractions.status}`,
-      sql`not (${issueThreadInteractions.payload} ?| array['toolAction', 'secretProposal', 'connectionAuthorization'])`,
-    )).limit(1);
-  if (!card) return false;
-  // An old pending card must not hide this acknowledgement, but a new request
-  // from this very turn still owns its normal question/approval presentation.
-  const [newRequest] = await input.db.select({ id: issueThreadInteractions.id }).from(issueThreadInteractions).where(and(
-    eq(issueThreadInteractions.companyId, input.companyId), eq(issueThreadInteractions.issueId, input.issueId),
-    eq(issueThreadInteractions.sourceRunId, input.runId), eq(issueThreadInteractions.status, "pending"),
-  )).limit(1);
-  return !newRequest;
-}

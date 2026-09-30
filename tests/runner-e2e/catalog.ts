@@ -1198,14 +1198,14 @@ export const runnerSuites: readonly RunnerSuiteFixture[] = [
   },
   {
     id: "confirmation-replies", label: "Conversational Approval Cards", manualOnly: true,
-    description: "Persist approval/refusal from chat before execution, preserve card clicks, and clarify ambiguous proposals.",
+    description: "Persist approval/refusal from chat before execution, preserve card clicks, clarify ambiguous proposals, and answer historical questions after moving on.",
     groups: ["chat", "native"],
     profiles: runnerProfiles.filter(profile => ["runner-codex", "runner-acpx-claude"].includes(profile.id))
       .map(profile => productionStoryProfile(defaultPermissionProfile(profile))),
     environments: [localEnvironment],
     tasks: [...firstTaskTasks.filter(task => ["task-reply-accept", "interview-plan-accept", "reject-no-execution", "task-card-accept"].includes(task.id)), ...chatConfirmationTasks],
-    expectedMatrixSize: 10,
-    definitionMetadata: { version: 1, instructions: "production", grading: "card-message-provenance-before-child-creation", completionObservation: "120-seconds", scheduling: "explicit-only" },
+    expectedMatrixSize: 12,
+    definitionMetadata: { version: 2, instructions: "production", grading: "card-message-provenance-before-child-creation", completionObservation: "120-seconds", scheduling: "explicit-only" },
   },
   {
     id: "completion-updates", label: "Delegated Completion Updates", manualOnly: true,

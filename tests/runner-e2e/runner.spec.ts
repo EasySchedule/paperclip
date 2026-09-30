@@ -946,9 +946,10 @@ for (const execution of executions) {
           observe: (chatIssue, chatRuns) => { issue = chatIssue; selectedRuns = chatRuns; },
           capture: captureScreenshot,
           evidence: completionEvidence,
+          check: (id, passed, detail) => matcherResults.push({ matcher: { kind: "json_path", path: `chat.${id}`, expected: true }, passed, detail }),
         });
         issue = chat.issue; selectedRuns = chat.runs;
-        matcherResults = [{ matcher: { kind: "issue_status", expected: "in_review" }, passed: true, detail: "Chat workflow and durable handoff/session assertions passed" }];
+        if (matcherResults.length === 0) matcherResults = [{ matcher: { kind: "issue_status", expected: "in_review" }, passed: true, detail: "Chat workflow and durable handoff/session assertions passed" }];
       } else if (execution.task.flow === "first_task") {
         const firstTask = await runFirstTaskFlow({
           page, api, fixtures, execution, nonce, secrets,

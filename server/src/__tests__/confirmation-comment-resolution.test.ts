@@ -6,7 +6,8 @@ import { activityLog, agents, companies, createDb, documents, documentRevisions,
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { resolveConfirmationFromComment } from "../services/confirmation-comment-resolution.js";
 import { issueThreadInteractionService } from "../services/issue-thread-interactions.js";
-import { getConversationConfirmationContext, hasRecordedConversationConfirmationReply } from "../services/conversation-confirmation-context.js";
+import { pendingNativeGovernance } from "../services/native-runtime/native-run-finalizer.js";
+import { getConversationConfirmationContext } from "../services/conversation-confirmation-context.js";
 
 const { resolvedTelemetry } = vi.hoisted(() => ({ resolvedTelemetry: vi.fn() }));
 vi.mock("@paperclipai/shared/telemetry", async importOriginal => ({
@@ -41,28 +42,42 @@ const support = await getEmbeddedPostgresTestSupport();
   const readCard = (id: string) => db.select().from(issueThreadInteractions).where(eq(issueThreadInteractions.id, id)).then(rows => rows[0]!);
   const audit = (id: string) => db.select().from(activityLog).where(eq(activityLog.entityId, id)).then(rows => rows.filter(row => row.details?.source === "conversation_reply"));
 
-  it.each(["accept", "reject"] as const)("requires a real %s decision from this run and wake before allowing a chat acknowledgement", async decision => {
+  it.each(["ask_user_questions", "request_confirmation", "request_checkbox_confirmation"])("an older chat %s stays pending without gating a later reply", async kind => {
     const f = await seed(false, true);
-    const input = { db, ...f, commentId: f.comment.id, sessionGeneration: 1 };
-    expect(await hasRecordedConversationConfirmationReply(input)).toBe(false);
-    await resolveConfirmationFromComment(db, { ...f.args, input: { commentId: f.comment.id, decision } });
-    expect(await hasRecordedConversationConfirmationReply(input)).toBe(true);
-    const [newQuestion] = await db.insert(issueThreadInteractions).values({ companyId: f.companyId, issueId: f.issueId,
-      kind: "ask_user_questions", sourceRunId: f.runId, payload: { version: 1, questions: [{ id: "scope", prompt: "What next?",
-        selectionMode: "single", options: [{ id: "a", label: "One" }, { id: "b", label: "Two" }] }] } }).returning();
-    expect(await hasRecordedConversationConfirmationReply(input)).toBe(false);
-    await db.update(issueThreadInteractions).set({ status: "answered" }).where(eq(issueThreadInteractions.id, newQuestion.id));
-    expect(await hasRecordedConversationConfirmationReply(input)).toBe(true);
-    for (const patch of [{ commentId: null }, { commentId: randomUUID() }, { runId: randomUUID() },
-      { agentId: randomUUID() }, { companyId: randomUUID() }, { issueId: randomUUID() },
-      { sessionGeneration: 2 }, { sessionGeneration: undefined },
-    ]) expect(await hasRecordedConversationConfirmationReply({ ...input, ...patch })).toBe(false);
-    await db.update(issues).set({ executionRunId: null }).where(eq(issues.id, f.issueId));
-    expect(await hasRecordedConversationConfirmationReply(input)).toBe(true);
-    const [newOwner] = await db.insert(heartbeatRuns).values({ companyId: f.companyId, agentId: f.agentId,
-      nativeIssueId: f.issueId, status: "running", runtimeMode: "native" }).returning();
-    await db.update(issues).set({ executionRunId: newOwner.id }).where(eq(issues.id, f.issueId));
-    expect(await hasRecordedConversationConfirmationReply(input)).toBe(false);
+    await db.update(issueThreadInteractions).set({ kind, sourceRunId: null }).where(eq(issueThreadInteractions.id, f.card.id));
+    expect(await pendingNativeGovernance({ db, ...f, executionState: null })).toBeNull();
+    expect((await readCard(f.card.id)).status).toBe("pending");
+    await db.update(issueThreadInteractions).set({ sourceRunId: f.runId }).where(eq(issueThreadInteractions.id, f.card.id));
+    expect(await pendingNativeGovernance({ db, ...f, executionState: null })).toEqual({ kind: "interaction", id: f.card.id });
+  });
+
+  it.each(["ordinary-task", "human_only", "toolAction", "secretProposal", "connectionAuthorization"])("preserves the existing %s completion gate", async kind => {
+    const f = await seed(false, kind !== "ordinary-task");
+    if (kind === "human_only") await db.update(issueThreadInteractions).set({ effectiveResolverPolicy: "human_only" }).where(eq(issueThreadInteractions.id, f.card.id));
+    else if (kind !== "ordinary-task") await db.update(issueThreadInteractions).set({ payload: { ...f.card.payload, [kind]: {} } }).where(eq(issueThreadInteractions.id, f.card.id));
+    expect(await pendingNativeGovernance({ db, ...f, executionState: null })).toEqual({ kind: "interaction", id: f.card.id });
+    expect(await pendingNativeGovernance({ db, ...f, executionState: { status: "pending" } })).toEqual({ kind: "execution_stage", id: f.runId });
+    expect(await pendingNativeGovernance({ db, ...f, companyId: randomUUID(), executionState: null })).toBeNull();
+  });
+
+  it.each([true, false])("preserves historical questions only in agent chat (conversation=%s)", async conversation => {
+    const f = await seed(false, conversation);
+    const question = (prompt: string) => ({ kind: "ask_user_questions" as const, payload: { version: 1 as const,
+      supersedeOnUserComment: true, questions: [{ id: "color", prompt, selectionMode: "single" as const, required: true,
+        options: [{ id: "blue", label: "Blue" }, { id: "green", label: "Green" }] }] } });
+    const first = await f.svc.create(f.issue, question("Which color?"), { agentId: f.agentId });
+    await f.svc.expireRequestConfirmationsSupersededByComment(f.issue,
+      { id: f.comment.id, authorUserId: "operator", createdAt: new Date(Date.now() + 1000) }, { userId: "operator" });
+    expect((await readCard(first.id)).status).toBe(conversation ? "pending" : "expired");
+    const second = await f.svc.create(f.issue, question("Which shade?"), { agentId: f.agentId });
+    await f.svc.create(f.issue, question("Which finish?"), { agentId: f.agentId });
+    expect((await readCard(second.id)).status).toBe(conversation ? "pending" : "expired");
+    if (conversation) {
+      const answered = await f.svc.answerQuestions(f.issue, first.id, { answers: [{ questionId: "color", optionIds: ["blue"] }] }, { userId: "operator" });
+      expect(answered).toMatchObject({ status: "answered", result: { answers: [{ questionId: "color", optionIds: ["blue"] }] } });
+      expect((await readCard(second.id)).status).toBe("pending");
+      await expect(f.svc.answerQuestions(f.issue, first.id, { answers: [{ questionId: "color", optionIds: ["green"] }] }, { userId: "operator" })).rejects.toThrow();
+    }
   });
 
   it("supplies actual pending card identities and explicit choices, then refreshes after resolution", async () => {

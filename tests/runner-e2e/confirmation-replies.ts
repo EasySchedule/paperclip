@@ -117,7 +117,9 @@ export async function runAmbiguousConfirmationReply(context: {
   expect(before.filter(c => c.status === "pending").map(c => c.id).sort()).toEqual([note.id, poster.id].sort());
   await input.evidence("confirmation-before-reply.json", { issueId: issue.id, cards: before });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await input.capture("initial-state", "Two independent pending proposals", "initial-state.png");
+  await expect(page.getByTestId("task-chat-composer-takeover")).toBeVisible();
+  await expect(page.getByTestId("task-chat-composer-takeover")).toContainText("Approve");
+  await input.capture("confirmation-pending", "Two independent pending proposals", "confirmation-pending.png");
   await sendChatMessage(page, "Yes, go ahead.");
   await context.idle(2);
   const afterReply = await context.comments();
@@ -149,6 +151,92 @@ export async function runAmbiguousConfirmationReply(context: {
     await assertConfirmationReceipt(page, cards.find(card => card.id === id)!);
   }
   await input.evidence("confirmation-decisions.json", { cards, comments: await context.comments(), activity: await api.get(`/api/issues/${issue.id}/activity`) });
-  await input.capture("final-state", "Conversational approval and rejection persisted", "final-state.png");
+  await input.capture("confirmation-decisions", "Conversational approval and rejection persisted", "confirmation-decisions.png");
+  input.check?.("confirmation-decisions-persisted", true, "Exact user comments resolve the chosen cards; reloaded receipts show approval and rejection, with no tasks created");
   assertAmbiguousReplyUnresolved(e);
+  input.check?.("ambiguous-approval-not-assumed", true, "The agent asks which proposal is intended and leaves both decisions pending until explicitly answered");
+}
+
+export interface UnansweredQuestionEvidence {
+  original: Row;
+  afterMove: Row;
+  afterAnswer: Row;
+  unrelatedComment: Row | undefined;
+  unrelatedReply: Row | undefined;
+  lateReply: Row | undefined;
+  taskCount: number;
+}
+export function gradeUnansweredQuestion(e: UnansweredQuestionEvidence) {
+  const originalOptions: Row[] = (e.original.payload?.questionSet?.questions ?? e.original.payload?.questions ?? [])[0]?.options ?? [];
+  const blueId = originalOptions.find(option => option.label.toLowerCase() === "blue")?.id;
+  const answer = e.afterAnswer.result?.answers?.[0];
+  return [
+    { id: "unanswered-preserved", passed: Boolean(e.original.id && e.afterMove.id === e.original.id && e.original.status === "pending"
+      && e.afterMove.status === "pending" && !e.afterMove.result && !e.afterMove.resolvedAt), detail: "Moving on preserves the exact unanswered question without inventing a resolution" },
+    { id: "unrelated-turn-completed", passed: Boolean(e.unrelatedComment?.authorUserId && e.unrelatedReply?.authorAgentId
+      && Date.parse(e.unrelatedReply.createdAt) >= Date.parse(e.unrelatedComment.createdAt)
+      && /\bParis\b/i.test(e.unrelatedReply.body)), detail: "The agent answers the new message while its earlier question remains pending" },
+    { id: "historical-answer-recorded", passed: Boolean(e.afterAnswer.id === e.original.id && e.afterAnswer.status === "answered"
+      && e.afterAnswer.resolvedByUserId && blueId && answer?.optionIds?.length === 1 && answer.optionIds[0] === blueId), detail: "The reopened original question records the user's Blue selection" },
+    { id: "historical-answer-delivered", passed: Boolean(e.lateReply?.authorAgentId && e.lateReply.createdByRunId
+      && Date.parse(e.lateReply.createdAt) >= Date.parse(e.afterAnswer.resolvedAt ?? "") && /\bblue\b/i.test(e.lateReply.body)), detail: "A later agent turn acknowledges the saved answer after the original turn ended" },
+    { id: "no-unrequested-work", passed: e.taskCount === 0, detail: "No tasks are created by the question, unrelated reply, or late answer" },
+  ];
+}
+
+export async function runUnansweredQuestionReturn(context: {
+  input: ChatFlowInput; issue(): ChatIssue; idle(count: number): Promise<void>; comments(): Promise<Row[]>;
+}) {
+  const { input } = context;
+  const { api, page } = input;
+  await sendChatMessage(page, "Help me choose a color for a garden club welcome note. Ask me one interactive question using Paperclip's question card: Which color should the welcome note use? Offer Blue and Green. When I eventually answer, acknowledge my chosen color in chat. For now only ask; do not create tasks or write the note.");
+  await context.idle(1);
+  const path = `/api/issues/${context.issue().id}/interactions`;
+  const original = (await api.get<Row[]>(path)).filter(card => card.kind === "ask_user_questions" && card.status === "pending").at(-1);
+  expect(original, "Agent creates an actual saved question").toBeTruthy();
+  const questionRow = () => page.getByTestId("task-chat-unanswered-question").filter({ hasText: /color/i });
+  await expect(page.getByTestId("task-chat-composer-takeover")).toBeVisible();
+  await expect(questionRow()).toBeVisible();
+  await input.capture("question-asked", "Original question awaiting an answer", "question-asked.png");
+
+  const unrelated = "Leave that color question unanswered for now. What is the capital of France? Answer that in chat; do not create tasks.";
+  await sendChatMessage(page, unrelated);
+  await context.idle(2);
+  const afterMove = (await api.get<Row[]>(path)).find(card => card.id === original!.id)!;
+  const moveComments = await context.comments();
+  const unrelatedComment = moveComments.findLast(comment => comment.authorUserId && comment.body === unrelated);
+  const unrelatedReply = moveComments.findLast(comment => comment.authorAgentId === input.fixtures.agent.id
+    && unrelatedComment && comment.createdAt >= unrelatedComment.createdAt);
+  expect(afterMove).toMatchObject({ status: "pending", resolvedAt: null, result: null });
+  expect(unrelatedReply?.body).toMatch(/\bParis\b/i);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(questionRow()).toBeVisible();
+  await expect(page.getByTestId("task-chat-composer-input")).toBeVisible();
+  await expect(page.getByTestId("task-chat-composer-takeover")).toHaveCount(0);
+  await input.capture("question-left-unanswered", "After reload: conversation moved on and the question remains in history", "question-left-unanswered.png");
+
+  await questionRow().click();
+  const form = page.getByTestId("task-chat-composer-takeover");
+  await expect(form).toContainText(/color/i);
+  await input.capture("question-reopened", "The original question can be reopened from history", "question-reopened.png");
+  await form.getByRole("radio", { name: "Blue", exact: true }).click();
+  await form.getByRole("button", { name: /^(Send|Submit) answers$/ }).click();
+  await context.idle(3);
+  const afterAnswer = (await api.get<Row[]>(path)).find(card => card.id === original!.id)!;
+  const lateReply = (await context.comments()).findLast(comment => comment.authorAgentId === input.fixtures.agent.id
+    && comment.createdAt >= afterAnswer.resolvedAt);
+  const evidence = { original: original!, afterMove, afterAnswer, unrelatedComment, unrelatedReply, lateReply,
+    taskCount: (await api.get<Row[]>(`/api/companies/${input.fixtures.company.id}/issues`)).length };
+  await input.evidence("unanswered-question.json", evidence);
+  for (const check of gradeUnansweredQuestion(evidence)) {
+    input.check?.(check.id, check.passed, check.detail);
+    expect(check.passed, check.detail).toBe(true);
+  }
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const receipt = page.getByTestId("task-chat-answered-questions-receipt");
+  await expect(receipt).toBeVisible();
+  await expect(page.getByTestId("task-chat-unanswered-question")).toHaveCount(0);
+  await receipt.locator("summary").click();
+  await expect(receipt).toContainText("Blue");
+  await input.capture("question-answered-later", "Saved answer and later agent acknowledgement", "question-answered-later.png");
 }

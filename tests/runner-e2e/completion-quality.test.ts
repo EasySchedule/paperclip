@@ -7,7 +7,7 @@ const reports = [{ replyId: "reply", rationale: "Reports the completed task", co
 describe("completion semantic qualification", () => {
   it.each(["runner-codex", "runner-acpx-claude"])("requires a completion judge only for accepted work on %s", profile => {
     const cells = runnerMatrix.filter(e => e.suite.id === "confirmation-replies" && e.profile.id === profile);
-    expect(cells).toHaveLength(5);
+    expect(cells).toHaveLength(6);
     expect(cells.filter(runsCompletionUpdateProbe).map(e => e.task.id).sort()).toEqual([
       "interview-plan-accept", "task-card-accept", "task-reply-accept",
     ]);

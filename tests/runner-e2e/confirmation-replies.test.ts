@@ -1,3 +1,4 @@
+import { gradeUnansweredQuestion, type UnansweredQuestionEvidence } from "./confirmation-replies.js";
 import { describe, expect, it, vi } from "vitest";
 import { gradeConfirmationReply, assertAmbiguousReplyUnresolved, ambiguousConfirmationFixtures } from "./confirmation-replies.js";
 import { firstTaskScenario } from "./first-task-cases.js";
@@ -121,12 +122,37 @@ describe("confirmation-reply independent oracle", () => {
     expect(fixtures.agent.id).toBe(""); // The real wizard must still create the agent.
     expect(JSON.stringify(fixtures)).not.toContain("test-credential");
   });
-  it("selects exactly ten explicit-only cases using production native profiles", () => {
+  it("selects exactly twelve explicit-only cases using production native profiles", () => {
     const cells = runnerMatrix.filter(e => e.suite.id === "confirmation-replies");
-    expect(cells).toHaveLength(10);
+    expect(cells).toHaveLength(12);
     expect(new Set(cells.map(c => c.profile.id))).toEqual(new Set(["runner-codex", "runner-acpx-claude"]));
-    expect(new Set(cells.map(c => c.task.id)).size).toBe(5);
-    expect(selectRunnerExecutions(parseRunnerSelectors(["--suite", "confirmation-replies"]))).toHaveLength(10);
+    expect(new Set(cells.map(c => c.task.id)).size).toBe(6);
+    expect(selectRunnerExecutions(parseRunnerSelectors(["--suite", "confirmation-replies"]))).toHaveLength(12);
     expect(selectRunnerExecutions(parseRunnerSelectors(["--all"])).some(c => c.suite.id === "confirmation-replies")).toBe(false);
+  });
+});
+
+
+describe("unanswered question workflow oracle", () => {
+  const good = () => ({
+    original: { id: "color", status: "pending", payload: { questions: [{ options: [{ id: "blue", label: "Blue" }, { id: "green", label: "Green" }] }] } },
+    afterMove: { id: "color", status: "pending", result: null, resolvedAt: null },
+    afterAnswer: { id: "color", status: "answered", resolvedByUserId: "user", resolvedAt: "2026-09-01T12:02:00Z", result: { answers: [{ optionIds: ["blue"] }] } },
+    unrelatedComment: { authorUserId: "user", createdAt: "2026-09-01T12:00:00Z" },
+    unrelatedReply: { authorAgentId: "agent", body: "Paris.", createdAt: "2026-09-01T12:01:00Z" },
+    lateReply: { authorAgentId: "agent", createdByRunId: "later-run", body: "Blue it is.", createdAt: "2026-09-01T12:03:00Z" }, taskCount: 0,
+  });
+  it("accepts the independently saved workflow", () => expect(gradeUnansweredQuestion(good()).every(check => check.passed)).toBe(true));
+  it.each(["expired", "wrong-question", "missing-reply", "stale-reply", "wrong-answer", "missing-late-reply", "old-acknowledgement", "invented-work"])("rejects %s", kind => {
+    const evidence: UnansweredQuestionEvidence = good();
+    if (kind === "expired") evidence.afterMove.status = "expired";
+    if (kind === "wrong-question") evidence.afterAnswer.id = "other-question";
+    if (kind === "missing-reply") evidence.unrelatedReply = undefined;
+    if (kind === "stale-reply") evidence.unrelatedReply!.createdAt = "2026-08-01T12:00:00Z";
+    if (kind === "wrong-answer") evidence.afterAnswer.result.answers[0].optionIds = ["green"];
+    if (kind === "missing-late-reply") evidence.lateReply = undefined;
+    if (kind === "old-acknowledgement") evidence.lateReply!.createdAt = "2026-08-01T12:00:00Z";
+    if (kind === "invented-work") evidence.taskCount = 1;
+    expect(gradeUnansweredQuestion(evidence).some(check => !check.passed)).toBe(true);
   });
 });

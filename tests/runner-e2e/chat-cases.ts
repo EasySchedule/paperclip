@@ -74,4 +74,4 @@ export const chatCompletionTasks = buildChatTasks([
   ["handoff-completion-restart", "Recover pending completion delivery across a server restart", 5],
 ]).map(task => ({ ...task, minimumExpectedRunCount: 2 }));
 
-export const chatConfirmationTasks = buildChatTasks([["confirmation-ambiguous", "Clarify ambiguous approval, then resolve only the chosen cards", 4]]);
+export const chatConfirmationTasks = buildChatTasks([["confirmation-ambiguous", "Clarify ambiguous approval, then resolve only the chosen cards", 4], ["unanswered-question-return", "Move on, reopen a historical question, and deliver the late answer", 3]]);
