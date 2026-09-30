@@ -1225,7 +1225,7 @@ export const runnerSuites: readonly RunnerSuiteFixture[] = [
     environments: [localEnvironment],
     tasks: [...firstTaskTasks.filter(task => ["task-reply-accept", "interview-plan-accept", "reject-no-execution", "task-card-accept"].includes(task.id)), ...chatConfirmationTasks],
     expectedMatrixSize: 12,
-    definitionMetadata: { version: 3, instructions: "production", grading: "card-message-provenance-before-child-creation", completionObservation: "120-seconds", scheduling: "explicit-only" },
+    definitionMetadata: { version: 4, instructions: "production", grading: "card-message-provenance-before-child-creation", completionObservation: "120-seconds", scheduling: "explicit-only" },
   },
   {
     id: "completion-updates", label: "Delegated Completion Updates", manualOnly: true,

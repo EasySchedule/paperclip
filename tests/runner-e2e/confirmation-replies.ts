@@ -243,5 +243,9 @@ export async function runUnansweredQuestionReturn(context: {
   await expect(page.getByTestId("task-chat-unanswered-question")).toHaveCount(0);
   await receipt.locator("summary").click();
   await expect(receipt).toContainText("Blue");
-  await input.capture("question-answered-later", "Saved answer and later agent acknowledgement", "question-answered-later.png");
+  await input.capture("question-answered-later", "The historical question stores the submitted Blue answer", "question-answered-later.png");
+  const acknowledgement = page.locator(`[id="comment-${lateReply!.id}"]`);
+  await expect(acknowledgement).toContainText(/blue/i);
+  await acknowledgement.scrollIntoViewIfNeeded();
+  await input.capture("question-answer-acknowledged", "The agent acknowledges the late answer in a new chat turn", "question-answer-acknowledged.png");
 }
