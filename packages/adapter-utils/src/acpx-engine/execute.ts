@@ -4930,7 +4930,7 @@ export function createAcpxEngineExecutor(deps: AcpxEngineExecutorOptions = {}) {
           ...(lastEventAgeMs !== undefined && Number.isSafeInteger(lastEventAgeMs) && lastEventAgeMs >= 0
             ? { acpLastEventAgeMs: lastEventAgeMs } : {}),
           acpPendingToolCount: [...interruptionTools.values()].filter(
-            (tool) => tool.status !== "completed" && tool.status !== "failed",
+            (tool) => tool.status !== "completed" && tool.status !== "failed" && tool.status !== "cancelled",
           ).length,
           acpToolInventoryComplete: !incompleteToolInventory,
         };

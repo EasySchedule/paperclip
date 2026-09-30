@@ -3057,6 +3057,8 @@ describe("ACP activity diagnostics", () => {
                 yield { type: "tool_call", toolCallId: "private-pending-id", title: "private command", kind: "execute", status: "in_progress" };
                 yield { type: "tool_call", toolCallId: "private-done-id", title: "private read", kind: "read", status: "in_progress" };
                 yield { type: "tool_call", toolCallId: "private-done-id", status: "completed" };
+                yield { type: "tool_call", toolCallId: "private-cancelled-id", status: "cancelled" };
+                yield { type: "tool_call", toolCallId: "private-failed-id", status: "failed" };
                 yield { type: "status", text: "terminal/create private receipt" };
               }
               currentNow = 10_000;
@@ -3078,7 +3080,7 @@ describe("ACP activity diagnostics", () => {
       } as never);
       expect(result.exitCode).toBe(1);
       expect(result.resultJson).toMatchObject({
-        acpObservedEventCount: outcome === "no_events" ? 0 : 4,
+        acpObservedEventCount: outcome === "no_events" ? 0 : 6,
         acpPendingToolCount: outcome === "no_events" ? 0 : 1,
         acpToolInventoryComplete: outcome === "no_events",
       });
