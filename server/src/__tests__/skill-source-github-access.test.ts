@@ -38,6 +38,17 @@ describe('GitHub source authorization', () => {
     expect(fetch.mock.calls.map(call => new Headers(call[1].headers).get('authorization'))).toEqual(['Bearer personal', 'Bearer organization']);
     expect(mocks.headers.mock.calls.map(call => call[5])).toEqual(['personal', 'organization']);
   });
+  it('continues after a credential refresh error and sanitizes an all-grants failure', async () => {
+    mocks.grantIds.mockResolvedValue(['personal', 'organization']);
+    mocks.headers.mockRejectedValueOnce(new Error('sensitive refresh-provider error')).mockResolvedValueOnce({ Authorization: 'Bearer organization' });
+    const fetch = vi.fn().mockResolvedValue(Response.json({ id: 42 })); vi.stubGlobal('fetch', fetch);
+    const read = skillSourceGitHubReader(db, 'company', actor({ type: 'board', userId: 'alice' }), 'connection');
+    expect(await read('/repos/acme/shared')).toEqual({ id: 42 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    mocks.headers.mockRejectedValue(new Error('sensitive refresh-provider error'));
+    await expect(read('/repos/acme/shared')).rejects.toMatchObject({ message: 'Could not read GitHub. Check your connection and try again.' });
+    expect(mocks.headers).toHaveBeenCalledTimes(4);
+  });
   it('rechecks authorization if access is revoked during a repository scan', async () => {
     mocks.headers.mockResolvedValueOnce({ Authorization: 'Bearer allowed' }).mockRejectedValueOnce(forbidden('Authorization revoked.'));
     const fetch = vi.fn().mockResolvedValue(Response.json({ id: 1 })); vi.stubGlobal('fetch', fetch);

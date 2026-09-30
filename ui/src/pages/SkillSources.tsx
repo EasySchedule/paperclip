@@ -57,7 +57,7 @@ export function SkillSources() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3"><GithubIcon className="mt-1 size-5 shrink-0 text-muted-foreground" /><div className="min-w-0">
               <Link to={`/skills/sources/${source.id}`} className="break-all text-sm font-medium">{source.fullName}</Link>
-              <p className="text-xs text-muted-foreground"><span className="font-mono">{source.trackingRef}</span> · {source.entries.filter(entry => entry.skillId).length} imported · {source.enabled ? source.lastSuccessAt ? `Refreshed ${timeAgo(source.lastSuccessAt)}` : 'Not refreshed yet' : 'Disconnected'}</p>
+              <p className="text-xs text-muted-foreground"><span className="font-mono">{source.trackingRef === 'HEAD' ? 'Default branch' : source.trackingRef}</span> · {source.entries.filter(entry => entry.skillId).length} imported · {source.enabled ? source.lastSuccessAt ? `Refreshed ${timeAgo(source.lastSuccessAt)}` : 'Not refreshed yet' : 'Disconnected'}</p>
               {newCount > 0 && <Link to={`/skills/sources/${source.id}`} className="text-xs underline">{newCount} new {newCount === 1 ? 'skill' : 'skills'} available</Link>}
             </div></div>
             <div className="flex flex-wrap items-center gap-2">
@@ -172,7 +172,7 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
       </div>}
       {ready && <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         {!source && <span className="break-all">{discovery?.fullName}</span>}
-        <span className="inline-flex items-center gap-1.5"><GitBranch className="size-3.5" /><span className="font-mono">{source?.trackingRef ?? discovery?.trackingRef}</span></span>
+        <span className="inline-flex items-center gap-1.5"><GitBranch className="size-3.5" /><span className="font-mono">{source?.trackingRef === 'HEAD' ? 'Default branch' : source?.trackingRef ?? discovery?.trackingRef}</span></span>
         <a href={source?.repositoryUrl ?? discovery?.repositoryUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">View on GitHub<ExternalLink className="size-3" /></a>
       </div>}
       {source?.lastError && <p role="alert" className="text-sm text-destructive">{source.lastError}{' '}<Link onClick={rememberReturn} to={source.connectionId ? `/apps/${source.connectionId}/permissions` : connectHref} className="underline">Manage GitHub connection</Link></p>}

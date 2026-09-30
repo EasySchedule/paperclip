@@ -46,8 +46,8 @@ export function skillSourceGitHubReader(db: Db, companyId: string, actor: Reques
           if (response.status === 401 && connectionId && actor.type === 'board') response = await request(grantId, true);
           if (![401, 403, 404].includes(response.status)) break;
         } catch (error) {
-          if (!(error instanceof Error && 'status' in error)) throw error;
-          authorizationError = error;
+          authorizationError = error instanceof Error && 'status' in error ? error
+            : unprocessable('Could not read GitHub. Check your connection and try again.');
         }
       }
     } catch (error) {

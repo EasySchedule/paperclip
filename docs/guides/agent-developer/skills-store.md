@@ -161,7 +161,9 @@ change; active runs and pinned versions keep their existing content. Skill Studi
 can view and test originals. **Make a copy** creates an independent editable skill.
 
 Older imports with no saved tracking branch resolve the repository’s default branch
-on their first successful refresh. Explicit branch and commit pins are preserved.
+on their first successful refresh. If an explicit source already tracks that branch,
+the adopted source keeps a **Default branch** alias so both sets of installed skill
+identities and selections remain intact. Explicit branch and commit pins are preserved.
 
 Recognizable older GitHub imports are adopted into Sources without refetching or
 changing content; the first successful refresh completes their local snapshots.

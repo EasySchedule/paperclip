@@ -198,7 +198,7 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     expect(adopted.trackingRef).toBe('HEAD');
     expect((await service.sourceForSkill(legacyCompany, pinned!.id))?.trackingRef).toBe(sha);
     files = { 'old/SKILL.md': md('updated') }; commit = 'd'.repeat(40);
-    await expect(service.create(legacyCompany, { repositoryUrl: 'https://github.com/acme/skills', selectedPaths: ['old/SKILL.md'] }, context)).rejects.toThrow(/already in Sources/);
+    await expect(service.create(legacyCompany, { repositoryUrl: 'https://github.com/acme/skills', commitSha: commit, selectedPaths: ['old/SKILL.md'] }, context)).rejects.toThrow(/already in Sources/);
     const read = context.read(null);
     const refreshed = await service.importFromUrl(legacyCompany, 'https://github.com/acme/skills/tree/main/old', { ...context, read: () => async request => {
       if (request.includes('/commits/') && !['main', commit].includes(decodeURIComponent(request.split('/commits/')[1]!))) throw unprocessable('Not found', { status: 404 });
@@ -207,6 +207,28 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     expect(refreshed.imported[0]).toMatchObject({ id: legacy!.id, sourceRef: commit });
     expect((await service.sourceForSkill(legacyCompany, legacy!.id))?.trackingRef).toBe('main');
     expect(await service.list(legacyCompany)).toHaveLength(2);
+  });
+
+  it('refreshes both legacy default and explicit branch sources without losing their skill identities', async () => {
+    const legacyCompany = randomUUID();
+    await db.insert(companies).values({ id: legacyCompany, name: 'Mixed legacy imports', issuePrefix: 'MIX' });
+    const imported = await db.insert(companySkills).values([
+      { companyId: legacyCompany, key: 'legacy/implicit', slug: 'implicit', name: 'Implicit', markdown: md('old'), sourceType: 'github', sourceRef: sha, metadata: { owner: 'acme', repo: 'skills', ref: sha, repoSkillDir: 'one' } },
+      { companyId: legacyCompany, key: 'legacy/explicit', slug: 'explicit', name: 'Explicit', markdown: md('old'), sourceType: 'github', sourceRef: sha, metadata: { owner: 'acme', repo: 'skills', trackingRef: 'main', repoSkillDir: 'one' } },
+    ]).returning();
+    const migration = await fs.readFile(new URL('../../../packages/db/src/migrations/0291_conscious_secret_warriors.sql', import.meta.url), 'utf8');
+    await db.execute(sql.raw(migration.slice(migration.indexOf('DO $$', migration.indexOf('-- Adopt only')))));
+    const service = skillSourceService(db);
+    files = { 'one/SKILL.md': md('updated') }; commit = 'e'.repeat(40);
+    for (const skill of imported) {
+      const source = (await service.sourceForSkill(legacyCompany, skill.id))!;
+      const updated = await service.refresh(legacyCompany, source.id, context);
+      expect(updated.updated[0]).toMatchObject({ id: skill.id, key: skill.key, sourceRef: commit });
+      expect(updated.source.trackingRef).toBe(source.trackingRef);
+      expect(updated.source.entries[0]).toMatchObject({ skillId: skill.id, selection: 'selected' });
+    }
+    expect(await service.list(legacyCompany)).toHaveLength(2);
+    expect(await db.select().from(companySkills).where(eq(companySkills.companyId, legacyCompany))).toHaveLength(2);
   });
 
   it('routes legacy folder URLs with slash-containing refs through the source importer', async () => {
