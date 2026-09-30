@@ -1741,36 +1741,48 @@ export async function prepareGitHubOperationLaunchers(input: {
   // the snapshot for either case would hand back directories the caller removed.
   const prependLauncherPath = [
     // Compute the value in a subshell and assign it to PATH. A staged profile is
-    // sourced into the caller's own shell, so every name the loop below sets is a
+    // sourced into the caller's own shell, so every name the walk below sets is a
     // name the caller may already be using. The single assignment this replaces
-    // touched PATH alone. Setting a caller's `count` or `inherited` and then
-    // unsetting it would stop a command started by that shell from receiving the
-    // value the caller exported. A subshell has its own variable scope, so the
-    // caller keeps every variable it had and only PATH changes. The names below
-    // are therefore free to be short.
+    // touched PATH alone. Setting a caller's `count` or `kept` and then unsetting
+    // it would stop a command started by that shell from receiving the value the
+    // caller exported. A subshell has its own variable scope, so the caller keeps
+    // every variable it had and only PATH changes.
     'PATH="$(',
-    `  launcher_directory=${shellQuote(directory)}`,
-    `  fallback_path=${shellQuote(managedPath)}`,
-    "  inherited=${PATH-}",
-    '  if [ -z "$inherited" ]; then',
-    "    result=$fallback_path",
-    "  else",
-    // Append a delimiter so the loop also sees a trailing empty entry, and count
+    // A readonly attribute is inherited by a subshell, so a caller that owns one
+    // of these four names as a readonly variable stops the walk at its first
+    // assignment. The subshell would then report nothing, and the empty result
+    // would select the managed snapshot and drop entries the caller chose, which
+    // is the defect this change exists to fix. Probe the four names first inside a
+    // subshell of their own, where a failure shows up as a non-zero status rather
+    // than a dead walk. The probe assignments stay in that nested subshell, so the
+    // caller's own values are untouched either way.
+    "  if ( kept=x; count=x; rest=x; entry=x ) 2>/dev/null; then",
+    '    if [ -z "$PATH" ]; then',
+    `      printf '%s' ${shellQuote(managedPath)}`,
+    "    else",
+    // Append a delimiter so the walk also sees a trailing empty entry, and count
     // the survivors separately from `kept` so that a kept-but-empty entry and no
     // entry at all stay distinguishable. Both distinctions carry caller intent.
-    "    kept=",
-    "    count=0",
-    "    rest=$inherited:",
-    '    while [ -n "$rest" ]; do',
-    "      entry=${rest%%:*}",
-    "      rest=${rest#*:}",
-    '      if [ "$entry" != "$launcher_directory" ]; then',
-    "        count=$((count + 1))",
-    '        if [ "$count" -eq 1 ]; then kept=$entry; else kept=$kept:$entry; fi',
-    "      fi",
-    "    done",
-    '    if [ "$count" -eq 0 ]; then result=$launcher_directory',
-    "    else result=$launcher_directory:$kept; fi",
+    "      kept=",
+    "      count=0",
+    "      rest=$PATH:",
+    '      while [ -n "$rest" ]; do',
+    "        entry=${rest%%:*}",
+    "        rest=${rest#*:}",
+    `        if [ "$entry" != ${shellQuote(directory)} ]; then`,
+    "          count=$((count + 1))",
+    '          if [ "$count" -eq 1 ]; then kept=$entry; else kept=$kept:$entry; fi',
+    "        fi",
+    "      done",
+    `      if [ "$count" -eq 0 ]; then printf '%s' ${shellQuote(directory)}`,
+    `      else printf '%s:%s' ${shellQuote(directory)} "$kept"; fi`,
+    "    fi",
+    "  else",
+    // The walk cannot run, so keep it to the one job that must never fail: put the
+    // launcher first and leave every entry the caller had in place. This can leave
+    // an earlier copy of the launcher directory behind, which a later read of the
+    // profile would remove anyway.
+    `    printf '%s:%s' ${shellQuote(directory)} "$PATH"`,
     "  fi",
     // A command substitution strips trailing newlines from what it captures, so a
     // PATH whose last directory name ends in a newline would come back shortened
@@ -1778,7 +1790,7 @@ export async function prepareGitHubOperationLaunchers(input: {
     // trailing sentinel so any real trailing newline is no longer last, then drop
     // the sentinel below. A PATH may legitimately contain a newline, because a
     // directory name may contain one.
-    "  printf '%s.' \"$result\"",
+    "  printf '%s.' ''",
     ')"',
     "PATH=${PATH%?}",
     // A subshell that is interrupted reports nothing, and an empty PATH would leave

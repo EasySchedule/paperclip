@@ -421,6 +421,33 @@ describe("managed GitHub launcher environment", () => {
     expect(result.stdout).toBe(`${launcher}:/usr/bin:usr\n`);
   });
 
+  it("keeps the caller's PATH when a readonly variable collides with the walk", async () => {
+    const fixture = await sandbox("usr/bin");
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-readonly-collision", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    // A readonly attribute is inherited by a subshell, so a caller that owns one
+    // of the walk's names as a readonly variable stops the walk at its first
+    // assignment. The walk must then fall back to a plain prepend rather than to
+    // the managed snapshot, or the caller's own entries are lost. That is the same
+    // defect the whole change exists to fix.
+    const launcher = env.PAPERCLIP_GITHUB_LAUNCHER_DIR;
+    for (const name of ["kept", "count", "rest", "entry"]) {
+      const result = await fixture.runner.execute({
+        command: "/bin/sh",
+        args: ["-c", `readonly ${name}=caller-${name}\n. "$BASH_ENV"\nprintf '%s' "$PATH"\nprintf '\\n%s=%s\\n' "${name}" "$${name}"`],
+        env: { HOME: fixture.root, PATH: "/opt/x:/usr/bin:/bin", BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR },
+      });
+      expect(result.exitCode, `${name}: ${result.stderr}`).toBe(0);
+      expect(result.stderr, name).toBe("");
+      const [path, echoed] = result.stdout.split("\n");
+      expect(path, name).toBe(`${launcher}:/opt/x:/usr/bin:/bin`);
+      // The caller's own value is still the caller's, not the walk's.
+      expect(echoed, name).toBe(`${name}=caller-${name}`);
+    }
+  });
+
   it("preserves an explicit remote PATH without querying the remote environment", async () => {
     const fixture = await sandbox("custom/bin");
     const env = await prepareGitHubOperationLaunchers({
