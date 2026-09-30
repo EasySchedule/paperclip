@@ -2,11 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { companySkillSources as sources, companySkillSourceEntries as entries, companySkills, type Db } from '@paperclipai/db';
-import type { CompanySkill, SkillSource, SkillSourceCreateRequest, SkillSourceDiscoveryRequest, SkillSourceSelectionRequest, SkillSourceRefreshResult } from '@paperclipai/shared';
+import type { CompanySkill, SkillSource, SkillSourceCreateRequest, SkillSourceDiscoveryRequest, SkillSourceSelectionRequest, SkillSourceRefreshResult, SkillSourcePreviewRequest } from '@paperclipai/shared';
 import { normalizeAgentUrlKey } from '@paperclipai/shared';
 import { conflict, notFound, unprocessable } from '../errors.js';
 import { companySkillService, parseSkillImportSourceInput } from './company-skills.js';
-import { scanGitHubSkills, type GitHubRead, type ScannedSkillSource } from './github-skill-source.js';
+import { scanGitHubSkills, previewGitHubSkillFile, type GitHubRead, type ScannedSkillSource } from './github-skill-source.js';
 import { skillSnapshotHash } from './skill-snapshot.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -43,6 +43,10 @@ export function skillSourceService(db: Db) {
     await context.authorize('skills.import', { sourceType: 'git', sourceLocator: input.repositoryUrl });
     const { skills: _files, defaultBranch: _defaultBranch, ...result } = await scanGitHubSkills(input, context.read(input.connectionId ?? null));
     return result;
+  }
+  async function preview(input: SkillSourcePreviewRequest, context: SkillSourceContext) {
+    await context.authorize('skills.import', { sourceType: 'git', sourceLocator: input.repositoryUrl });
+    return previewGitHubSkillFile(input, context.read(input.connectionId ?? null));
   }
   async function authorizeScan(source: SourceRow, scan: ScannedSkillSource, selectedPaths: string[], context: SkillSourceContext) {
     const previous = await db.select().from(entries).where(and(eq(entries.companyId, source.companyId), eq(entries.sourceId, source.id)));
@@ -118,8 +122,8 @@ export function skillSourceService(db: Db) {
       }
       if (candidate.error && selection === 'selected') warnings.push(`${candidate.path}: ${candidate.error}`);
       await tx.insert(entries).values({ companyId: source.companyId, sourceId: source.id, path: candidate.path, name: candidate.name,
-        description: candidate.description, skillId, selection, present: true, error: candidate.error })
-        .onConflictDoUpdate({ target: [entries.sourceId, entries.path], set: { name: candidate.name, description: candidate.description, skillId, selection, present: true, error: candidate.error } });
+        description: candidate.description, inspection: candidate.inspection ?? null, skillId, selection, present: true, error: candidate.error })
+        .onConflictDoUpdate({ target: [entries.sourceId, entries.path], set: { name: candidate.name, description: candidate.description, inspection: candidate.inspection ?? null, skillId, selection, present: true, error: candidate.error } });
     }
     for (const old of previous.filter(entry => !scanned.has(entry.path))) {
       await tx.update(entries).set({ present: false, selection: selected.has(old.path) ? 'selected' : 'excluded', error: null }).where(eq(entries.id, old.id));
@@ -250,5 +254,5 @@ export function skillSourceService(db: Db) {
     const imported = await Promise.all(result.source.entries.filter(entry => selectedPaths.includes(entry.path) && entry.skillId && !entry.error).map(entry => skills.getById(companyId, entry.skillId!)));
     return { imported: imported.filter((skill): skill is CompanySkill => Boolean(skill)), warnings: result.warnings };
   }
-  return { list, detail, sourceForSkill, discover, create, refresh, disconnect, importFromUrl };
+  return { list, detail, sourceForSkill, discover, preview, create, refresh, disconnect, importFromUrl };
 }

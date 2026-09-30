@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, timestamp, jsonb, integer, boolean, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import type { SkillPackageInspection } from '@paperclipai/shared';
 import { companies } from './companies.js';
 import { companySkills } from './company_skills.js';
 import { toolConnections } from './tool_access.js';
@@ -32,6 +33,7 @@ export const companySkillSourceEntries = pgTable('company_skill_source_entries',
   path: text('path').notNull(),
   name: text('name').notNull(),
   description: text('description'),
+  inspection: jsonb('inspection').$type<SkillPackageInspection>(),
   skillId: uuid('skill_id').references(() => companySkills.id, { onDelete: 'set null' }),
   selection: text('selection').$type<'selected' | 'excluded' | 'new'>().notNull().default('new'),
   present: boolean('present').notNull().default(true),

@@ -1,3 +1,4 @@
+import { userEvent, within } from "storybook/test";
 import { useEffect, useRef, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useQueryClient } from "@tanstack/react-query";
@@ -98,6 +99,13 @@ type Story = StoryObj<typeof meta>;
 export const StartInSkills: Story = { name: "01 · Start in Installed", args: { step: "start" } };
 export const ChooseRepository: Story = { name: "02 · Choose a GitHub repository", args: { step: "repository" } };
 export const SelectSkills: Story = { name: "03 · Review and select skills", args: { step: "selection" } };
+export const InspectPackage: Story = {
+  name: '03a · Inspect a complete skill package', args: { step: 'selection' },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement.ownerDocument.body);
+    await userEvent.click(await page.findByRole('button', { name: 'Inspect Code review' }));
+  },
+};
 export const ImportedSource: Story = { name: "04 · Repository is now a source", args: { step: "imported" } };
 export const InstalledLibrary: Story = { name: "05 · Find imported skills in the library", args: { step: "library" } };
 export const ViewSkill: Story = { name: "06 · Read the installed skill", args: { step: "detail" } };

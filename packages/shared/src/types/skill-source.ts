@@ -1,8 +1,40 @@
 import type { CompanySkill } from './company-skill.js';
 
+/** Metadata from an audited, immutable repository scan; file contents are fetched on demand. */
+export interface SkillPackageInspection {
+  files: SkillPackageFile[];
+  requirements: string | null;
+  references: SkillPackageReference[];
+  warnings: string[];
+}
+export interface SkillPackageFile {
+  path: string;
+  kind: string;
+  sizeBytes: number;
+  encoding: 'utf8' | 'base64';
+  executable: boolean;
+}
+export interface SkillPackageReference {
+  fromPath: string;
+  target: string;
+  resolvedPath: string;
+  kind: 'missing' | 'outside_package';
+}
+export interface SkillSourcePreviewRequest extends SkillSourceDiscoveryRequest {
+  commitSha: string;
+  skillPath: string;
+  filePath: string;
+}
+export interface SkillSourceFilePreview {
+  file: SkillPackageFile;
+  content: string | null;
+  truncated: boolean;
+  commitSha: string;
+}
 export interface SkillSourceEntry {
   id: string;
   sourceId: string;
+  inspection?: SkillPackageInspection | null;
   path: string;
   name: string;
   description: string | null;
@@ -34,6 +66,7 @@ export interface SkillSourceDiscoveryRequest {
   connectionId?: string | null;
 }
 export interface SkillSourceCandidate {
+  inspection?: SkillPackageInspection | null;
   path: string;
   name: string;
   description: string | null;

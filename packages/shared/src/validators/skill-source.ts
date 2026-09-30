@@ -7,6 +7,11 @@ export const skillSourceDiscoverySchema = z.object({
   trackingRef: z.string().trim().min(1).max(255).optional(),
   connectionId: z.string().uuid().nullable().optional(),
 });
+export const skillSourcePreviewSchema = skillSourceDiscoverySchema.extend({
+  commitSha: z.string().regex(/^[a-f0-9]{40}$/i),
+  skillPath: repoPath.refine(value => /(^|\/)skill\.md$/i.test(value), 'Invalid skill entrypoint'),
+  filePath: repoPath.refine(value => value.length > 0, 'A file path is required'),
+});
 export const skillSourceCreateSchema = skillSourceDiscoverySchema.extend({
   commitSha: z.string().regex(/^[a-f0-9]{40}$/i),
   selectedPaths: z.array(repoPath).max(10000),

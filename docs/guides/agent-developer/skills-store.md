@@ -133,15 +133,33 @@ opens the standard setup in Apps. Completing or cancelling setup returns you to
 the importer with your draft retained; the repository list refreshes automatically.
 Use the refresh button beside the repository count to reload accessible repositories.
 
-The searchable folder tree starts with every discovered `SKILL.md` checked, including
-hidden and deeply nested directories. Empty folder chains share a compact row; hover
-a skill name to see its full path and description. Folder checkboxes select their descendants;
-each nested skill is a separate package. Selected skills bring their references,
-scripts, and binary assets with them. Validation errors appear beside affected
-skills; eligible selections import and skipped skills are reported. These skills
-become available in the current company's library and agent skill picker. Files are
-limited to 1 MiB each and a scan to 100 MiB of downloaded content; importing never
-runs scripts, hooks, dependency installation, or builds.
+The searchable tree starts with every discovered skill package checked, including
+hidden and deeply nested directories. Each package shows its name and file count;
+expand it to see the files included with it. Folder checkboxes select descendant
+packages. A package checkbox selects that whole directory, stopping at nested
+`SKILL.md` boundaries; nested skills remain independently selectable. Supporting
+files cannot be deselected individually.
+
+Use the inspection button or click an included file to open a read-only preview.
+The inspector shows the repository path, scanned commit, byte sizes, executable
+flags, and any `compatibility` requirements declared by the author. Text previews
+show up to 64 KiB; binary assets show metadata and a link to GitHub for viewing or
+download. Preview reads use the current caller's GitHub access and re-audit the
+package at that exact commit. Preview failures do not alter selection or installed
+content. Existing sources gain inspection metadata on their next successful refresh.
+
+**Check references** flags detectable Markdown links and inline-code relative
+resource paths that are missing or outside the package, including files belonging to
+nested skills. This is a best-effort check, not a complete dependency analysis;
+references do not cause external files to be imported automatically. Fix the source
+or leave the package unchecked if it needs those files. Declared requirements are
+shown separately from these warnings and from content-audit notices.
+
+Validation errors appear beside affected skills; eligible selections import and
+skipped skills are reported. These skills become available in the current company's
+library and agent skill picker. Files are limited to 1 MiB each and a scan to 100 MiB
+of downloaded content; importing never runs scripts, hooks, dependency installation,
+or builds.
 
 **Skills → Sources** shows repositories, tracking branches, imported counts, last
 refresh times, and connection errors. **Refresh** applies valid updates immediately.
@@ -178,6 +196,7 @@ Source APIs live beneath `/api/companies/:companyId/skill-sources`:
 | `GET /` and `GET /:sourceId` | List sources and entries |
 | `GET /repositories` | Browse repositories through existing GitHub grants |
 | `POST /discover` | Discover and validate packages at one commit |
+| `POST /preview` | Preview an audited package file at an immutable commit using current caller access |
 | `POST /` | Import selected packages at the discovered commit |
 | `PATCH /:sourceId` | Save selection/exclusions and optional connection, with revision check |
 | `POST /:sourceId/refresh` | Refresh selected skills; discover new ones for review |

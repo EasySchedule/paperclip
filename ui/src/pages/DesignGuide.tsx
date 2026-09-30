@@ -2206,7 +2206,7 @@ export function DesignGuide() {
       </Section>
 
       <Section title="GitHub skill sources">
-        <p className="text-sm text-muted-foreground">The shared FileTree explorer layout puts disclosure controls beside selection, with compact folder chains, equal-height rows, inline skill descriptions, and trailing status badges. Search and folder selection include hidden descendants. Use arrow keys to navigate and Space to select.</p>
+        <p className="text-sm text-muted-foreground">The shared FileTree explorer layout puts disclosure controls beside selection, with compact folder chains, equal-height rows, inline skill descriptions, and trailing status badges. Folders select descendant packages; package checkboxes select only that package, independently of nested skills. Included files use aligned rows without individual checkboxes (`getCheckboxState` returns null); package rows use `renderNodeExtra` for file counts and inspection. Use arrow keys to navigate and Space to select.</p>
         <SkillSourceTreeShowcase />
         <SkillBinaryFile file={{ skillId: "example", path: "assets/example.bin", kind: "asset", content: "AAECAw==", encoding: "base64", language: null, markdown: false, editable: false }} />
       </Section>
@@ -2486,7 +2486,10 @@ export function DesignGuide() {
 
 function SkillSourceTreeShowcase() {
   const candidates = [
-    { path: ".agents/review/SKILL.md", name: "Review", description: "Review changes before release.", error: null },
+    { path: ".agents/review/SKILL.md", name: "Review", description: "Review changes before release.", error: null, inspection: { requirements: null, references: [], warnings: [], files: [
+      { path: "SKILL.md", kind: "skill", sizeBytes: 120, encoding: "utf8" as const, executable: false },
+      { path: "scripts/check.sh", kind: "script", sizeBytes: 45, encoding: "utf8" as const, executable: true },
+    ] } },
     { path: ".agents/review/nested/SKILL.md", name: "Nested skill", description: "An independently selected package.", error: null, note: "New skill" },
     { path: "broken/SKILL.md", name: "Needs attention", description: null, error: "Missing required description." },
   ];

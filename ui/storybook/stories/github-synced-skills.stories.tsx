@@ -1,3 +1,4 @@
+import { userEvent, within } from "storybook/test";
 import { useEffect, useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { COMPANY_ID, SOURCE_ID, installFixtures, type RepositoryScenario } from "../fixtures/githubSkillSources";
@@ -54,3 +55,18 @@ export const ImportRepositoriesLoading: Story = { name: "Import · Loading repos
 export const ManageSkills: Story = { args: { view: "manage" } };
 export const Empty: Story = { args: { empty: true } };
 export const ConnectionRecovery: Story = { args: { needsConnection: true } };
+
+export const InspectPackage: Story = {
+  name: 'Manage · Package contents', args: { view: 'manage' },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement.ownerDocument.body);
+    await userEvent.click(await page.findByRole('button', { name: 'Inspect Code review' }));
+  },
+};
+export const ReviewReferences: Story = {
+  name: 'Manage · References and requirements', args: { view: 'manage' },
+  play: async ({ canvasElement }) => {
+    const page = within(canvasElement.ownerDocument.body);
+    await userEvent.click(await page.findByRole('button', { name: 'Inspect Security review' }));
+  },
+};

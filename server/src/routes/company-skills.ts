@@ -1,7 +1,7 @@
 import { skillSourceService, type SkillSourceContext } from "../services/skill-sources.js";
 import { skillSourceGitHubReader } from "../services/skill-source-github-access.js";
 import { toolAccessService } from "../services/tool-access.js";
-import { skillSourceCreateSchema, skillSourceDiscoverySchema, skillSourceSelectionSchema } from "@paperclipai/shared";
+import { skillSourceCreateSchema, skillSourceDiscoverySchema, skillSourcePreviewSchema, skillSourceSelectionSchema } from "@paperclipai/shared";
 import type { ActivityPublication } from "../services/activity-log.js";
 import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -327,6 +327,10 @@ export function companySkillRoutes(db: Db) {
   router.post("/companies/:companyId/skill-sources/discover", validate(skillSourceDiscoverySchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     res.json(await sourceOperation(req, companyId, context => sourceSvc.discover(req.body, context)));
+  });
+  router.post("/companies/:companyId/skill-sources/preview", validate(skillSourcePreviewSchema), async (req, res) => {
+    const companyId = req.params.companyId as string;
+    res.json(await sourceOperation(req, companyId, context => sourceSvc.preview(req.body, context)));
   });
   router.post("/companies/:companyId/skill-sources", validate(skillSourceCreateSchema), async (req, res) => {
     const companyId = req.params.companyId as string;

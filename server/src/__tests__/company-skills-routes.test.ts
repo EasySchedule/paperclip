@@ -1374,6 +1374,7 @@ describe("company skill mutation permissions", () => {
       const responses = await Promise.all([
         request(app).get(base), request(app).get(`${base}/repositories`), request(app).get(`${base}/source-id`),
         request(app).post(`${base}/discover`).send({ repositoryUrl: "https://github.com/acme/skills" }),
+        request(app).post(`${base}/preview`).send({ repositoryUrl: "https://github.com/acme/skills", commitSha: "a".repeat(40), skillPath: "SKILL.md", filePath: "SKILL.md" }),
         request(app).post(base).send({ repositoryUrl: "https://github.com/acme/skills", commitSha: "a".repeat(40), selectedPaths: [] }),
         request(app).patch(`${base}/source-id`).send({ revision: 0, selectedPaths: [], excludedFolders: [] }),
         request(app).post(`${base}/source-id/refresh`), request(app).delete(`${base}/source-id`),

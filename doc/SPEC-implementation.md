@@ -1788,6 +1788,13 @@ unavailable. Preserve current ownership and newer-work fences. See
   ref to an immutable commit once per operation. Truncated recursive trees require
   complete subtree traversal or a failed scan. Symlinks and submodules are reported,
   never traversed; nested skill roots are independent package boundaries.
+- Select packages as units, with included-file trees and bounded read-only previews.
+  Nested packages have independent checkboxes; supporting files have no individual
+  selection. Persist file manifests, explicit missing/out-of-package reference findings,
+  and declared `compatibility` requirements with source entries. Preview reads reauthorize
+  the current caller and audit the requested package at the scanned immutable commit;
+  discovery and source metadata contain no file contents. Reference checks are advisory,
+  do not establish complete runtime dependencies, and never expand package boundaries.
 - Stage and audit complete packages before publishing. Scripts are allowed through
   the existing content audit and never run on import. Persist binary bytes and executable
   flags in immutable version inventories (legacy entries default to UTF-8/non-executable).

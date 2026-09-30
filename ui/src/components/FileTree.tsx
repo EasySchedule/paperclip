@@ -248,6 +248,9 @@ export type FileTreeProps = {
   /** Rich labels reuse the tree's icons, spacing, focus, and selection controls. */
   renderLabel?: (node: FileTreeNode) => ReactNode;
   checkboxLabel?: (node: FileTreeNode) => string;
+  /** Override selection for package nodes; null leaves an aligned, non-selectable row. */
+  getCheckboxState?: (node: FileTreeNode) => 'checked' | 'mixed' | 'unchecked' | null;
+  renderNodeExtra?: (node: FileTreeNode) => ReactNode;
   /** Search hides rows, while folder check states still include all descendants. */
   visiblePaths?: ReadonlySet<string>;
   disabled?: boolean;
@@ -277,6 +280,8 @@ export function FileTree({
   renderFileExtra,
   renderLabel,
   checkboxLabel,
+  getCheckboxState,
+  renderNodeExtra,
   visiblePaths,
   disabled = false,
   fileRowClassName,
@@ -342,7 +347,7 @@ export function FileTree({
         toggleNode(node);
         break;
       case " ":
-        if (showCheckboxes && onToggleCheck) {
+        if (showCheckboxes && onToggleCheck && getCheckboxState?.(node) !== null) {
           event.preventDefault();
           onToggleCheck(node.path, node.kind);
         }
@@ -409,7 +414,11 @@ export function FileTree({
     <div aria-label={ariaLabel} role="tree">
       {visibleNodes.map(({ node, depth }, index) => {
         const expanded = node.kind === "dir" && expandedDirs.has(node.path);
-        const { allChecked, someChecked } = checkboxState(node, effectiveCheckedFiles);
+        const customCheck = getCheckboxState?.(node);
+        const hasCheckbox = showCheckboxes && customCheck !== null;
+        const { allChecked, someChecked } = customCheck === undefined || customCheck === null
+          ? checkboxState(node, effectiveCheckedFiles)
+          : { allChecked: customCheck === 'checked', someChecked: customCheck === 'mixed' };
         const badge = fileBadges?.[node.path];
         const tone = fileTones?.[node.path] ?? "default";
         const extraClassName = node.kind === "file" ? fileRowClassName?.(node, allChecked) : undefined;
@@ -427,7 +436,7 @@ export function FileTree({
             aria-level={depth + 1}
             aria-expanded={node.kind === "dir" ? expanded : undefined}
             aria-selected={node.kind === "file" ? isSelected : undefined}
-            aria-checked={showCheckboxes ? (someChecked ? "mixed" : allChecked) : undefined}
+            aria-checked={hasCheckbox ? (someChecked ? "mixed" : allChecked) : undefined}
             aria-disabled={disabled || undefined}
             tabIndex={tabStop === node.path ? 0 : -1}
             className={cn(
@@ -460,7 +469,7 @@ export function FileTree({
                 {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
               </button>
             ) : <span className="size-4 shrink-0" aria-hidden="true" />)}
-            {showCheckboxes && (
+            {hasCheckbox ? (
               <label className={cn("flex items-center", layout === "explorer" ? "size-4 shrink-0 justify-center" : "pl-2")} onClick={(event) => event.stopPropagation()}>
                 <input
                   type="checkbox"
@@ -474,7 +483,7 @@ export function FileTree({
                   className={layout === "explorer" ? "size-3.5 shrink-0 accent-foreground" : "mr-2 accent-foreground"}
                 />
               </label>
-            )}
+            ) : showCheckboxes && layout === "explorer" ? <span className="size-4 shrink-0" aria-hidden="true" /> : null}
             <span className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left">
               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                 {node.kind === "dir" ? (
@@ -502,6 +511,7 @@ export function FileTree({
                 {badge.label}
               </Badge>
             )}
+            {renderNodeExtra?.(node)}
             {node.kind === "file" && renderFileExtra?.(node, allChecked)}
             {node.kind === "dir" && layout === "default" && (
               <button

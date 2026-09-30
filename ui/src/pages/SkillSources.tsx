@@ -13,6 +13,7 @@ import { appSourceConnectHref } from './apps/app-connect-policy';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { SkillPackagePreview } from './skills/SkillPackagePreview';
 import { SkillSourceTree, type SkillTreeCandidate } from './skills/SkillSourceTree';
 import { timeAgo } from '@/lib/timeAgo';
 import { consumeSkillSourceReturn, rememberSkillSourceReturn } from '@/lib/skill-source-connect-return';
@@ -92,6 +93,7 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
   const [repositoryUrl, setRepositoryUrl] = useState<string>(draft.repositoryUrl ?? source?.repositoryUrl ?? '');
   const [showRepositoryUrl, setShowRepositoryUrl] = useState<boolean>(draft.showRepositoryUrl ?? Boolean(draft.repositoryUrl));
   const [connectionId, setConnectionId] = useState<string | null>('connectionId' in draft ? draft.connectionId : source?.connectionId ?? null);
+  const [preview, setPreview] = useState<{ skill: SkillTreeCandidate; filePath?: string } | null>(null);
   const [discovery, setDiscovery] = useState<SkillSourceDiscovery | null>(draft.discovery ?? null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set(draft.selectedPaths ?? (source ? source.entries.filter(entry => entry.selection !== 'excluded').map(entry => entry.path) : [])));
   const [excludedFolders, setExcludedFolders] = useState<string[]>(draft.excludedFolders ?? source?.excludedFolders ?? []);
@@ -176,7 +178,7 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
         <a href={source?.repositoryUrl ?? discovery?.repositoryUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">View on GitHub<ExternalLink className="size-3" /></a>
       </div>}
       {source?.lastError && <p role="alert" className="text-sm text-destructive">{source.lastError}{' '}<Link onClick={rememberReturn} to={source.connectionId ? `/apps/${source.connectionId}/permissions` : connectHref} className="underline">Manage GitHub connection</Link></p>}
-      {ready && <SkillSourceTree candidates={candidates} selected={selected} excludedFolders={excludedFolders} onChange={(paths, folders) => { setSelected(paths); setExcludedFolders(folders); }} disabled={busy} />}
+      {ready && <SkillSourceTree onPreview={(skill, filePath) => setPreview({ skill, filePath })} candidates={candidates} selected={selected} excludedFolders={excludedFolders} onChange={(paths, folders) => { setSelected(paths); setExcludedFolders(folders); }} disabled={busy} />}
       {discovery?.warnings.map(warning => <p key={warning} className="text-xs text-muted-foreground">{warning}</p>)}
       {skippedCount > 0 && <p className="text-sm text-muted-foreground">{skippedCount} selected {skippedCount === 1 ? 'skill has' : 'skills have'} validation errors and will be skipped.</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error.message}{' '}<Link onClick={rememberReturn} to={connectHref} className="underline">Connect a GitHub account</Link></p>}
@@ -187,5 +189,8 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
         {ready ? <Button disabled={busy || (!source && selected.size === 0)} onClick={() => save.mutate()}>{save.isPending ? 'Saving…' : source ? 'Save selection' : `Import ${eligibleCount} ${eligibleCount === 1 ? "skill" : "skills"}`}</Button>
           : <Button disabled={busy || repositories.isPending || !repositoryUrl.trim()} onClick={() => scan.mutate()}>{scan.isPending ? 'Scanning…' : 'Find skills'}</Button>}
       </footer>
+    {preview && <SkillPackagePreview key={`${preview.skill.path}:${preview.filePath ?? ''}`} companyId={companyId}
+      repository={{ repositoryUrl: source?.repositoryUrl ?? discovery!.repositoryUrl, connectionId: source ? sourceConnectionId : connectionId }}
+      commitSha={source?.lastScanCommit ?? discovery?.commitSha ?? null} skill={preview.skill} initialFile={preview.filePath} onClose={() => setPreview(null)} />}
   </DialogContent></Dialog>;
 }

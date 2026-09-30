@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { SkillSourceTree, updateSkillTreeSelection } from './SkillSourceTree';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 const candidates = [
@@ -99,6 +99,39 @@ describe('skill source selection tree', () => {
       expect(host.querySelector('[aria-label="Import .agents/skills/review/SKILL.md"]')).toBeNull();
       await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Expand all')!.click());
       expect(host.querySelector<HTMLInputElement>('[aria-label="Import .agents/skills/review/SKILL.md"]')?.checked).toBe(true);
+    } finally { await act(async () => root.unmount()); host.remove(); }
+  });
+
+  it('selects a complete package independently of nested skills and previews included files without checkboxes', async () => {
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    const preview = vi.fn();
+    const packages = candidates.map(candidate => ({ ...candidate, inspection: { requirements: null, references: [], warnings: [], files: [
+      { path: 'SKILL.md', kind: 'skill', encoding: 'utf8' as const, sizeBytes: 100, executable: false },
+      { path: 'scripts/run.sh', kind: 'script', encoding: 'utf8' as const, sizeBytes: 20, executable: true },
+    ] } }));
+    let selection = new Set(packages.map(skill => skill.path));
+    function Example() {
+      const [selected, setSelected] = useState(selection);
+      return <SkillSourceTree candidates={packages} selected={selected} excludedFolders={[]} onPreview={preview} onChange={next => { selection = next; setSelected(next); }} />;
+    }
+    try {
+      await act(async () => root.render(<Example />));
+      // New nested packages stay visible while their parent package is collapsed.
+      expect(host.querySelector('[aria-label="Import .agents/one/nested/SKILL.md"]')).not.toBeNull();
+      await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand One"]')!.click());
+      const row = host.querySelector<HTMLElement>('[data-file-tree-path=".agents/one/SKILL.md/scripts/run.sh"]')!;
+      expect(row.textContent).toContain('Included');
+      expect(row.querySelector('input')).toBeNull();
+      expect(row.hasAttribute('aria-checked')).toBe(false);
+      await act(async () => row.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })));
+      expect(selection.size).toBe(packages.length);
+      await act(async () => row.click());
+      expect(preview).toHaveBeenCalledWith(packages[1], 'scripts/run.sh');
+      await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Import .agents/one/SKILL.md"]')!.click());
+      expect(selection.has('.agents/one/SKILL.md')).toBe(false);
+      expect(selection.has('.agents/one/nested/SKILL.md')).toBe(true);
+      await act(async () => changeSearch(host, 'scripts/run.sh'));
+      expect(host.querySelector('[data-file-tree-path=".agents/one/SKILL.md/scripts/run.sh"]')).not.toBeNull();
     } finally { await act(async () => root.unmount()); host.remove(); }
   });
 

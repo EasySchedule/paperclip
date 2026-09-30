@@ -1,5 +1,5 @@
 import { parseGitHubSkillRepositoryUrl } from "@paperclipai/shared";
-import type { AgentDesiredSkillEntry, CompanySkillDetail, CompanySkillListItem, CompanySkillVersion, CompanySkill, SkillSource, SkillSourceCandidate, SkillSourceEntry, SkillSourceRefreshResult } from "@paperclipai/shared";
+import type { AgentDesiredSkillEntry, CompanySkillDetail, CompanySkillListItem, CompanySkillVersion, CompanySkill, SkillSource, SkillPackageInspection, SkillSourceCandidate, SkillSourceEntry, SkillSourceRefreshResult } from "@paperclipai/shared";
 import { companySkillsApi } from "@/api/companySkills";
 import { agentsApi } from "@/api/agents";
 import { foldersApi } from "@/api/folders";
@@ -9,13 +9,31 @@ import { skillSourcesApi } from "@/api/skillSources";
 export const COMPANY_ID = "company-storybook";
 export const SOURCE_ID = "source-team-skills";
 export const COMMIT = "a17d36c9e4521f06b932ac670854d1293f24bc18";
+const packageContents: Record<string, Record<string, string | null>> = {
+  'SKILL.md': { 'SKILL.md': '---\nname: Team handbook\ndescription: Shared team conventions\n---\nRead [team conventions](references/conventions.md) before starting.\n', 'references/conventions.md': '# Team conventions\n\nKeep changes company-scoped. Report evidence with each review.\n', 'LICENSE': 'Example license text' },
+  '.agents/skills/review/SKILL.md': { 'SKILL.md': '---\nname: Code review\ndescription: Review code changes\ncompatibility: Requires Python 3.11 and git.\n---\nRead [the checklist](references/checklist.md). Run `scripts/review.py` when a diff is ready.\n', 'references/checklist.md': '# Review checklist\n\n- Check company boundaries.\n- Test failure handling.\n- Verify migrations.\n', 'scripts/review.py': '#!/usr/bin/env python3\nprint("Ready to review the diff")\n', 'assets/diagram.png': null, 'LICENSE': 'Example license text' },
+  '.agents/skills/review/security/SKILL.md': { 'SKILL.md': '---\nname: Security review\ndescription: Review authentication boundaries\ncompatibility: Requires Python 3.11.\n---\nRead [policy](../../shared/policy.md) and [threat model](references/threat-model.md).\n', 'scripts/check.py': '#!/usr/bin/env python3\nprint("Check company boundaries")\n', 'references/checklist.md': '# Security checklist\n\n- Validate caller access.\n- Preserve company boundaries.\n' },
+  'skills/research/SKILL.md': { 'SKILL.md': '---\nname: Research\ndescription: Gather primary sources\n---\nRead [method](references/method.md).\n', 'references/method.md': '# Research method\n\nStart with primary sources.\n' },
+  'experimental/deploy/SKILL.md': { 'SKILL.md': '---\nname: Deploy preview\n---\nDeploy the app.', 'README.md': '# Deployment notes' },
+};
+function inspection(skillPath: string): SkillPackageInspection {
+  return {
+    files: Object.entries(packageContents[skillPath]!).map(([path, content]) => ({ path, kind: path === 'SKILL.md' ? 'skill' : path.startsWith('scripts/') ? 'script' : path.startsWith('assets/') ? 'asset' : 'reference', encoding: content === null ? 'base64' : 'utf8', sizeBytes: content === null ? 2048 : new TextEncoder().encode(content).length, executable: path.startsWith('scripts/') })),
+    requirements: skillPath.includes('/security/') ? 'Requires Python 3.11.' : skillPath.includes('/review/') ? 'Requires Python 3.11 and git.' : null,
+    references: skillPath.includes('/security/') ? [
+      { fromPath: 'SKILL.md', target: '../../shared/policy.md', resolvedPath: '.agents/skills/shared/policy.md', kind: 'outside_package' },
+      { fromPath: 'SKILL.md', target: 'references/threat-model.md', resolvedPath: '.agents/skills/review/security/references/threat-model.md', kind: 'missing' },
+    ] : [],
+    warnings: skillPath.includes('/review/') ? ['Skill includes a script file.'] : [],
+  };
+}
 export const candidates: SkillSourceCandidate[] = [
-  { path: "SKILL.md", name: "Team handbook", description: "Shared conventions and context for every agent.", fileCount: 3, error: null, warnings: [] },
-  { path: ".agents/skills/review/SKILL.md", name: "Code review", description: "Review changes for correctness, security, and maintainability.", fileCount: 5, error: null, warnings: [] },
-  { path: ".agents/skills/review/security/SKILL.md", name: "Security review", description: "Inspect authentication and company boundaries. Includes reference material and scripts.", fileCount: 7, error: null, warnings: [] },
-  { path: "skills/research/SKILL.md", name: "Research", description: "Gather primary sources and turn findings into a concise brief.", fileCount: 4, error: null, warnings: [] },
-  { path: "experimental/deploy/SKILL.md", name: "Deploy preview", description: null, fileCount: 2, error: "Missing required description in SKILL.md frontmatter.", warnings: [] },
-];
+  { path: "SKILL.md", name: "Team handbook", description: "Shared conventions and context for every agent.", error: null },
+  { path: ".agents/skills/review/SKILL.md", name: "Code review", description: "Review changes for correctness and maintainability.", error: null },
+  { path: ".agents/skills/review/security/SKILL.md", name: "Security review", description: "Inspect authentication and company boundaries.", error: null },
+  { path: "skills/research/SKILL.md", name: "Research", description: "Gather primary sources and write a concise brief.", error: null },
+  { path: "experimental/deploy/SKILL.md", name: "Deploy preview", description: null, error: "Missing required description in SKILL.md frontmatter." },
+].map(candidate => ({ ...candidate, inspection: inspection(candidate.path), fileCount: Object.keys(packageContents[candidate.path]!).length, warnings: [] }));
 
 export function sourceFixture(): SkillSource {
   return {
@@ -26,7 +44,7 @@ export function sourceFixture(): SkillSource {
     lastScanCommit: COMMIT, lastError: null,
     entries: candidates.map((candidate, index) => ({
       id: `entry-${index}`, sourceId: SOURCE_ID, path: candidate.path, name: candidate.name,
-      description: candidate.description, error: candidate.error, present: true,
+      description: candidate.description, inspection: candidate.inspection, error: candidate.error, present: true,
       skillId: index < 2 ? `skill-${index}` : null,
       selection: index < 2 ? "selected" : index === 4 ? "excluded" : "new",
     })),
@@ -163,6 +181,11 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
       repositoryId: '123456', repositoryUrl: parsed.repositoryUrl, fullName: parsed.fullName,
       trackingRef: input.trackingRef || parsed.trackingRef || 'main', commitSha: COMMIT, candidates: discoveryCandidates, warnings: [],
     };
+  };
+  skillSourcesApi.preview = async (_companyId, input) => {
+    const file = inspection(input.skillPath).files.find(file => file.path === input.filePath);
+    if (!file) throw new Error('File is not included in this package.');
+    return { file, content: packageContents[input.skillPath]![input.filePath]!, truncated: false, commitSha: input.commitSha };
   };
   skillSourcesApi.create = async (_companyId, input) => {
     const source = sourceFixture();

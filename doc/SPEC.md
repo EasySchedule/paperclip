@@ -656,7 +656,9 @@ unavailable. Preserve current ownership and newer-work fences. See
 Repositories can supply read-only company skills independently of project repositories.
 A source tracks repository identity, branch, selected paths, and installed commits;
 an existing GitHub connection supplies caller-authorized reads. Manual refresh publishes
-complete local immutable versions, preserving skill identity and assignments. New
+complete local immutable versions, preserving skill identity and assignments. Selection
+operates on whole skill packages, with inspectable included files, declared runtime
+requirements, and advisory warnings for missing or external references. New
 upstream skills require reviewed selection; removed or deselected skills remain
 installed. Editing starts with an independent copy. Write-back and PR publication
 are a later milestone; exact path and commit provenance provide their base.

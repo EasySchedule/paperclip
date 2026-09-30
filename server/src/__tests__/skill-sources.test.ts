@@ -39,6 +39,9 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     const sources = skillSourceService(db), skills = companySkillService(db);
     const result = await sources.create(companyId, { repositoryUrl: 'https://github.com/acme/skills', commitSha: sha, selectedPaths: ['deep/one/SKILL.md', 'elsewhere/one/SKILL.md'] }, context);
     expect(result.imported).toHaveLength(2);
+    const stored = (await sources.detail(companyId, result.source.id)).entries.find(entry => entry.path === 'deep/one/SKILL.md')!.inspection!;
+    expect(stored.files.map(file => file.path)).toEqual(['SKILL.md', 'scripts/run.sh', 'assets/image.png']);
+    expect(JSON.stringify(stored)).not.toContain('echo hello');
     expect(new Set(result.imported.map(skill => skill.key)).size).toBe(2);
     const skill = result.imported.find(skill => skill.metadata?.skillSourcePath === 'deep/one/SKILL.md')!;
     expect((await skills.readFile(companyId, skill.id, 'assets/image.png'))?.encoding).toBe('base64');
@@ -272,6 +275,16 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     authorize.mockImplementation(async (action, resource) => { if (action === 'skills.import' && resource.skillKey?.endsWith('/added')) throw new Error('denied new skill'); });
     await expect(service.refresh(companyId, created.source.id, { ...context, authorize }, { revision: discovered.source.revision, selectedPaths: ['protected/SKILL.md', 'added/SKILL.md'], excludedFolders: [] })).rejects.toThrow('denied new skill');
     expect((await service.detail(companyId, created.source.id)).entries.find(entry => entry.path === 'added/SKILL.md')?.skillId).toBeNull();
+  });
+
+  it('authorizes previews before any provider read and uses the current caller connection', async () => {
+    const service = skillSourceService(db);
+    const input = { repositoryUrl: 'https://github.com/acme/skills', connectionId: randomUUID(), commitSha: sha, skillPath: 'SKILL.md', filePath: 'SKILL.md' };
+    const read = vi.fn(() => githubFixture({ 'SKILL.md': md('preview') }));
+    await expect(service.preview(input, { ...context, read, authorize: async () => { throw new Error('denied'); } })).rejects.toThrow('denied');
+    expect(read).not.toHaveBeenCalled();
+    expect((await service.preview(input, { ...context, read })).content).toBe(md('preview'));
+    expect(read).toHaveBeenCalledWith(input.connectionId);
   });
 
 });

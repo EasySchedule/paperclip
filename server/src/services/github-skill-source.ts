@@ -1,8 +1,9 @@
 import path from 'node:path';
-import type { CompanySkillVersionFileInventoryEntry, SkillSourceCandidate, SkillSourceDiscovery } from '@paperclipai/shared';
+import type { CompanySkillVersionFileInventoryEntry, SkillSourceCandidate, SkillSourceDiscovery, SkillSourcePreviewRequest, SkillSourceFilePreview } from '@paperclipai/shared';
 import { parseFrontmatterMarkdown, parseGitHubSkillRepositoryUrl } from '@paperclipai/shared';
-import { unprocessable } from '../errors.js';
-import { assertSkillSnapshotPath, snapshotFile } from './skill-snapshot.js';
+import { notFound, unprocessable } from '../errors.js';
+import { assertSkillSnapshotPath, snapshotFile, skillFileBytes } from './skill-snapshot.js';
+import { inspectSkillPackage } from './skill-package-inspection.js';
 import { auditSkillSnapshot, classifyInventoryKind } from './company-skills.js';
 
 export type GitHubRead = (apiPath: string) => Promise<unknown>;
@@ -18,7 +19,7 @@ export function parseSkillRepository(url: string) {
   return parsed;
 }
 
-export async function scanGitHubSkills(input: { repositoryUrl: string; trackingRef?: string; commitSha?: string }, read: GitHubRead): Promise<ScannedSkillSource> {
+export async function scanGitHubSkills(input: { repositoryUrl: string; trackingRef?: string; commitSha?: string; onlySkillPath?: string }, read: GitHubRead): Promise<ScannedSkillSource> {
   const parsed = parseSkillRepository(input.repositoryUrl);
   const repo = await read(`/repos/${parsed.fullName}`) as { id: number; full_name: string; default_branch: string };
   if (!repo.id || !repo.full_name || !repo.default_branch) throw unprocessable('GitHub returned incomplete repository information.');
@@ -67,7 +68,7 @@ export async function scanGitHubSkills(input: { repositoryUrl: string; trackingR
     return bytes;
   };
   const skills: DiscoveredSkill[] = [];
-  for (const root of roots.sort((a, b) => a.path.localeCompare(b.path))) {
+  for (const root of roots.filter(root => !input.onlySkillPath || root.path === input.onlySkillPath).sort((a, b) => a.path.localeCompare(b.path))) {
     const dir = path.posix.dirname(root.path);
     const prefix = dir === '.' ? '' : `${dir}/`;
     const owns = (entry: TreeEntry) => {
@@ -97,8 +98,25 @@ export async function scanGitHubSkills(input: { repositoryUrl: string; trackingR
     const description = typeof frontmatter.description === 'string' ? frontmatter.description : null;
     const findings = !error ? await auditSkillSnapshot(files) : [];
     error ??= findings.filter(f => f.severity === 'error').map(f => `${f.path ?? root.path}: ${f.message}`).join(' ') || null;
-    skills.push({ path: root.path, name, description, fileCount: inventory.length, error, warnings: findings.filter(f => f.severity === 'warning').map(f => f.message), files });
+    const inspection = inspectSkillPackage(root.path, files, entries.map(entry => entry.path), frontmatter, findings);
+    skills.push({ path: root.path, name, description, fileCount: inventory.length, error, warnings: inspection.warnings, inspection, files });
   }
   return { repositoryId: String(repo.id), repositoryUrl: `https://github.com/${repo.full_name.toLowerCase()}`, fullName: repo.full_name, trackingRef, commitSha: commit.sha,
     defaultBranch: repo.default_branch, candidates: skills.map(({ files: _files, ...candidate }) => candidate), warnings, skills };
+}
+
+/** Reauthorize the caller and re-audit the selected package; never trust a client-supplied manifest. */
+export async function previewGitHubSkillFile(input: SkillSourcePreviewRequest, read: GitHubRead): Promise<SkillSourceFilePreview> {
+  const scan = await scanGitHubSkills({ ...input, onlySkillPath: input.skillPath }, read);
+  if (scan.commitSha.toLowerCase() !== input.commitSha.toLowerCase()) throw unprocessable('The preview commit did not match the requested snapshot.');
+  const skill = scan.skills.find(candidate => candidate.path === input.skillPath);
+  if (!skill) throw notFound('Skill package not found at this commit.');
+  if (skill.error) throw unprocessable(`Preview unavailable: ${skill.error}`);
+  const file = skill.files.find(file => file.path === input.filePath);
+  const manifest = skill.inspection?.files.find(file => file.path === input.filePath);
+  if (!file || !manifest) throw notFound('File is not included in this skill package.');
+  const bytes = skillFileBytes(file);
+  const limit = 64 * 1024;
+  return { file: manifest, content: manifest.encoding === 'base64' ? null : bytes.subarray(0, limit).toString('utf8'),
+    truncated: manifest.encoding !== 'base64' && bytes.length > limit, commitSha: scan.commitSha };
 }
