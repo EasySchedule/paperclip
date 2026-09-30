@@ -1740,30 +1740,42 @@ export async function prepareGitHubOperationLaunchers(input: {
   // was the launcher directory has deliberately narrowed the search. Restoring
   // the snapshot for either case would hand back directories the caller removed.
   const prependLauncherPath = [
-    `launcher_directory=${shellQuote(directory)}`,
-    `fallback_path=${shellQuote(managedPath)}`,
-    "inherited=${PATH-}",
-    'if [ -z "$inherited" ]; then',
-    '  export PATH="$fallback_path"',
-    "else",
+    // Compute the value in a subshell and assign it to PATH. A staged profile is
+    // sourced into the caller's own shell, so every name the loop below sets is a
+    // name the caller may already be using. The single assignment this replaces
+    // touched PATH alone. Setting a caller's `count` or `inherited` and then
+    // unsetting it would stop a command started by that shell from receiving the
+    // value the caller exported. A subshell has its own variable scope, so the
+    // caller keeps every variable it had and only PATH changes.
+    'PATH="$(',
+    `  launcher_directory=${shellQuote(directory)}`,
+    `  fallback_path=${shellQuote(managedPath)}`,
+    "  inherited=${PATH-}",
+    '  if [ -z "$inherited" ]; then',
+    "    printf '%s' \"$fallback_path\"",
+    "  else",
     // Append a delimiter so the loop also sees a trailing empty entry, and count
     // the survivors separately from `kept` so that a kept-but-empty entry and no
     // entry at all stay distinguishable. Both distinctions carry caller intent.
-    "  kept=",
-    "  count=0",
-    "  rest=$inherited:",
-    '  while [ -n "$rest" ]; do',
-    '    entry=${rest%%:*}',
-    '    rest=${rest#*:}',
-    '    if [ "$entry" != "$launcher_directory" ]; then',
-    "      count=$((count + 1))",
-    '      if [ "$count" -eq 1 ]; then kept=$entry; else kept=$kept:$entry; fi',
-    "    fi",
-    "  done",
-    '  if [ "$count" -eq 0 ]; then export PATH="$launcher_directory"',
-    '  else export PATH="$launcher_directory:$kept"; fi',
-    "fi",
-    "unset launcher_directory fallback_path inherited kept count rest entry",
+    "    kept=",
+    "    count=0",
+    "    rest=$inherited:",
+    '    while [ -n "$rest" ]; do',
+    "      entry=${rest%%:*}",
+    "      rest=${rest#*:}",
+    '      if [ "$entry" != "$launcher_directory" ]; then',
+    "        count=$((count + 1))",
+    '        if [ "$count" -eq 1 ]; then kept=$entry; else kept=$kept:$entry; fi',
+    "      fi",
+    "    done",
+    "    if [ \"$count\" -eq 0 ]; then printf '%s' \"$launcher_directory\"",
+    "    else printf '%s' \"$launcher_directory:$kept\"; fi",
+    "  fi",
+    ')"',
+    // A subshell that is interrupted reports nothing, and an empty PATH would leave
+    // the shell with no search path at all. Fall back to the managed snapshot.
+    `if [ -z "$PATH" ]; then PATH=${shellQuote(managedPath)}; fi`,
+    "export PATH",
   ].join("\n");
   // Empty merge overrides clear host identity before launch, but Git treats
   // them as an explicit empty author. Remove them once the shell has inherited

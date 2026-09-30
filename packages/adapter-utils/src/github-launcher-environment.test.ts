@@ -369,6 +369,40 @@ describe("managed GitHub launcher environment", () => {
     expect(result.stdout).toBe(`${launcher}::::/usr/bin`);
   });
 
+  it("leaves a caller's exported variables alone instead of overwriting and unsetting them", async () => {
+    const fixture = await sandbox("usr/bin");
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-caller-vars", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    // The profile walks PATH through temporary variables. A caller may already
+    // export a name the walk wants, and a command started by that shell has to
+    // keep receiving the caller's value. The single assignment this replaced
+    // touched PATH alone, so the walk must not add any other name to the shell.
+    const caller = { count: "5", inherited: "/caller/keep", kept: "caller-kept", rest: "caller-rest",
+      entry: "caller-entry", launcher_directory: "caller-dir", fallback_path: "caller-fallback" };
+    // `env` reports the environment of a child process, so this reads the values
+    // the caller exported rather than any copy the profile may have left behind.
+    const result = await fixture.runner.execute({
+      command: "/bin/sh",
+      args: ["-c", '. "$BASH_ENV"\nprintf \'path=%s\\n\' "$PATH"\n'
+        + "env | grep -E '^(count|inherited|kept|rest|entry|launcher_directory|fallback_path)=' | sort"],
+      env: { HOME: fixture.root, PATH: "/usr/local/bin:/usr/bin:/bin",
+        BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR, ...caller },
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout.trim().split("\n")).toEqual([
+      `path=${env.PAPERCLIP_GITHUB_LAUNCHER_DIR}:/usr/local/bin:/usr/bin:/bin`,
+      `count=${caller.count}`,
+      `entry=${caller.entry}`,
+      `fallback_path=${caller.fallback_path}`,
+      `inherited=${caller.inherited}`,
+      `kept=${caller.kept}`,
+      `launcher_directory=${caller.launcher_directory}`,
+      `rest=${caller.rest}`,
+    ]);
+  });
+
   it("preserves an explicit remote PATH without querying the remote environment", async () => {
     const fixture = await sandbox("custom/bin");
     const env = await prepareGitHubOperationLaunchers({
