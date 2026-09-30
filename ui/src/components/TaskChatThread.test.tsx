@@ -2710,6 +2710,10 @@ describe("Agent Chat unanswered question history", () => {
   const movedOn = createLongThreadComments();
   const props = { conversationMode: true, issueId: "issue-1", onAdd: async () => {}, onSubmitInteractionAnswers: vi.fn() };
   const takeover = () => container.querySelector('[data-testid="task-chat-composer-takeover"]');
+  const pendingIndicator = () => container.querySelector<HTMLButtonElement>('[data-testid="task-chat-pending-input-indicator"]');
+  const dismiss = async () => {
+    await act(async () => takeover()!.querySelector<HTMLButtonElement>('[aria-label^="Dismiss "]')!.click());
+  };
   const click = async (text: string) => {
     const button = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent?.trim() === text);
     expect(button).toBeTruthy();
@@ -2719,6 +2723,7 @@ describe("Agent Chat unanswered question history", () => {
   it("leaves a compact, reopenable question on reload after moving on", async () => {
     render(<TaskChatThread {...props} comments={movedOn} interactions={[old]} />);
     expect(takeover()).toBeNull();
+    expect(pendingIndicator()).toBeNull();
     const row = container.querySelector<HTMLButtonElement>('[data-testid="task-chat-unanswered-question"]');
     expect(row?.textContent).toContain("Which color?");
     await act(async () => row!.click());
@@ -2733,7 +2738,37 @@ describe("Agent Chat unanswered question history", () => {
     expect(takeover()).not.toBeNull();
     await act(async () => render(<TaskChatThread {...props} comments={movedOn} interactions={[old]} />));
     expect(takeover()).toBeNull();
+    expect(pendingIndicator()).toBeNull();
     expect(container.querySelector('[data-testid="task-chat-unanswered-question"]')).not.toBeNull();
+  });
+
+  it("keeps multiple historical questions out of the composer after reopening and dismissing one", async () => {
+    const anotherOld = questionInteraction("another-old", "Which format?", "2026-08-15T12:00:02Z");
+    render(<TaskChatThread {...props} comments={movedOn} interactions={[old, anotherOld]} />);
+    expect(container.querySelectorAll('[data-testid="task-chat-unanswered-question"]')).toHaveLength(2);
+    expect(pendingIndicator()).toBeNull();
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
+    expect(takeover()?.textContent).toContain("Which color?");
+    expect(takeover()?.textContent).not.toContain("2 pending");
+    await dismiss();
+    expect(takeover()).toBeNull();
+    expect(pendingIndicator()).toBeNull();
+  });
+
+  it("counts and cycles only current inputs alongside historical question cards", async () => {
+    const newest = questionInteraction("newest", "Which size?", "2026-08-15T12:06:00Z");
+    render(<TaskChatThread {...props} comments={movedOn} interactions={[old, newer, newest]} />);
+    expect(takeover()?.textContent).toContain("Which size?");
+    await click("2 pending");
+    expect(takeover()?.textContent).toContain("Which tone?");
+    await click("2 pending");
+    expect(takeover()?.textContent).toContain("Which size?");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Answer question: Which color?"]')!.click());
+    expect(takeover()?.textContent).toContain("Which color?");
+    await dismiss();
+    expect(pendingIndicator()?.textContent).toContain("2 pending inputs");
+    await act(async () => pendingIndicator()!.click());
+    expect(takeover()?.textContent).toContain("Which size?");
   });
 
   it("opens the new question but can reopen the exact historical native question", async () => {
@@ -2765,10 +2800,12 @@ describe("Agent Chat unanswered question history", () => {
     expect(container.querySelector('[data-testid="task-chat-unanswered-question"]')).not.toBeNull();
   });
 
-  it("does not change ordinary task question behavior", () => {
+  it("does not change ordinary task question behavior", async () => {
     render(<TaskChatThread {...props} conversationMode={false} comments={movedOn} interactions={[old]} />);
     expect(takeover()?.textContent).toContain("Which color?");
     expect(container.querySelector('[data-testid="task-chat-unanswered-question"]')).toBeNull();
+    await dismiss();
+    expect(pendingIndicator()?.textContent).toContain("1 pending input");
   });
 });
 

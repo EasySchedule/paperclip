@@ -214,11 +214,13 @@ export async function runUnansweredQuestionReturn(context: {
     && unrelatedComment && comment.createdAt >= unrelatedComment.createdAt);
   expect(afterMove).toMatchObject({ status: "pending", resolvedAt: null, result: null });
   expect(unrelatedReply?.body).toMatch(/\bParis\b/i);
+  await expect(page.getByTestId("task-chat-pending-input-indicator")).toHaveCount(0);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(questionRow()).toBeVisible();
   await expect(page.getByTestId("task-chat-composer-input")).toBeVisible();
   await expect(page.getByTestId("task-chat-composer-takeover")).toHaveCount(0);
-  await input.capture("question-left-unanswered", "After reload: conversation moved on and the question remains in history", "question-left-unanswered.png");
+  await expect(page.getByTestId("task-chat-pending-input-indicator")).toHaveCount(0);
+  await input.capture("question-left-unanswered", "After reload: question stays in history without a duplicate composer reminder", "question-left-unanswered.png");
 
   await questionRow().click();
   const form = page.getByTestId("task-chat-composer-takeover");

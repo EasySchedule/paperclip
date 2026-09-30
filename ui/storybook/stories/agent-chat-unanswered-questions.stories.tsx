@@ -75,6 +75,7 @@ export const MovedOn: Story = { args: { movedOn: true }, play: async ({ canvasEl
   const canvas = within(canvasElement);
   await waitFor(() => expect(canvas.getByTestId("task-chat-unanswered-question")).toBeVisible());
   await expect(canvas.queryByTestId("task-chat-composer-takeover")).not.toBeInTheDocument();
+  await expect(canvas.queryByTestId("task-chat-pending-input-indicator")).not.toBeInTheDocument();
 } };
 export const Reopened: Story = { args: { movedOn: true }, play: async ({ canvasElement }) => {
   const canvas = within(canvasElement);
@@ -92,7 +93,12 @@ export const AnswerLater: Story = { args: { movedOn: true }, play: async ({ canv
   await expect(canvas.queryByTestId("task-chat-unanswered-question")).not.toBeInTheDocument();
   await waitFor(() => expect(canvas.getByTestId("task-chat-answered-questions-receipt")).toBeVisible());
 } };
-export const MultipleUnanswered: Story = { args: { multiple: true } };
+export const MultipleUnanswered: Story = { args: { multiple: true }, play: async ({ canvasElement }) => {
+  const canvas = within(canvasElement);
+  await waitFor(() => expect(canvas.getAllByTestId("task-chat-unanswered-question")).toHaveLength(2));
+  await expect(canvas.queryByTestId("task-chat-composer-takeover")).not.toBeInTheDocument();
+  await expect(canvas.queryByTestId("task-chat-pending-input-indicator")).not.toBeInTheDocument();
+} };
 export const AnsweredHistory: Story = { args: { answered: true } };
 export const Mobile: Story = { args: { movedOn: true }, globals: { viewport: { value: "mobile", isRotated: false } } };
 
@@ -103,6 +109,7 @@ export const MoveOnWithoutAnswering: Story = { args: {}, play: async ({ canvasEl
   await userEvent.type(canvas.getByRole("textbox", { name: "editable markdown" }), "Leave that for later. Tell me about tasks.");
   await userEvent.click(canvas.getByRole("button", { name: /^Send$/ }));
   await expect(canvas.queryByTestId("task-chat-composer-takeover")).not.toBeInTheDocument();
+  await expect(canvas.queryByTestId("task-chat-pending-input-indicator")).not.toBeInTheDocument();
   await userEvent.click(canvas.getByTestId("task-chat-unanswered-question"));
   await expect(canvas.getByRole("radio", { name: "Green" })).toBeChecked();
 } };

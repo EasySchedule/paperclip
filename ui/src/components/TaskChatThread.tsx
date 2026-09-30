@@ -2473,23 +2473,30 @@ export function TaskChatThread(props: TaskChatThreadProps) {
     pendingComposerInputs.find((input) => input.key === selectedPendingKey) ??
     currentPendingInputs[0] ??
     null;
+  // History cards own old questions. Include one in the takeover controls only
+  // while it is explicitly selected, never in the composer's pending reminder.
+  const takeoverPendingInputs = selectedPendingInput && !currentPendingKeys.has(selectedPendingInput.key)
+    ? [selectedPendingInput, ...currentPendingInputs]
+    : currentPendingInputs;
   const interactionDraftKey = selectedPendingInput
     ? `paperclip:task-input:${issueId ?? "unknown"}:${selectedPendingInput.key}`
     : undefined;
   const openPendingTakeover = useCallback(() => {
-    if (!selectedPendingInput) setSelectedPendingKey(pendingComposerInputs[0]?.key ?? null);
+    if (!selectedPendingInput || !currentPendingKeys.has(selectedPendingInput.key)) {
+      setSelectedPendingKey(currentPendingInputs[0]?.key ?? null);
+    }
     setTakeoverMode("open");
-  }, [pendingComposerInputs, selectedPendingInput]);
+  }, [currentPendingInputs, currentPendingKeys, selectedPendingInput]);
   const showNextPendingInput = useCallback(() => {
-    if (pendingComposerInputs.length < 2) return;
-    const currentIndex = pendingComposerInputs.findIndex(
+    if (takeoverPendingInputs.length < 2) return;
+    const currentIndex = takeoverPendingInputs.findIndex(
       (input) => input.key === selectedPendingInput?.key,
     );
     setSelectedPendingKey(
-      pendingComposerInputs[(currentIndex + 1) % pendingComposerInputs.length]
+      takeoverPendingInputs[(currentIndex + 1) % takeoverPendingInputs.length]
         ?.key ?? null,
     );
-  }, [pendingComposerInputs, selectedPendingInput?.key]);
+  }, [takeoverPendingInputs, selectedPendingInput?.key]);
   const skipPendingInput = useCallback(
     async (input: PendingComposerInput) => {
       if (input.kind === "runtime") {
@@ -2719,7 +2726,7 @@ export function TaskChatThread(props: TaskChatThreadProps) {
             selectedPendingInput.kind === "durable" &&
             selectedPendingInput.interaction.kind === "request_confirmation" &&
             Boolean(selectedPendingInput.interaction.payload.toolAction),
-          pendingCount: pendingComposerInputs.length,
+          pendingCount: takeoverPendingInputs.length,
           content: takeoverContent,
           onDismiss: () => setTakeoverMode("normal"),
           onSkip: () => skipPendingInput(selectedPendingInput),
@@ -3130,10 +3137,10 @@ export function TaskChatThread(props: TaskChatThreadProps) {
                       onRunnerGoalCommand={runnerGoal.executeComposerCommand}
                       onRunnerGoalReassign={reassignForRunnerGoal}
                       pendingTakeover={
-                        pendingComposerInputs.length > 0
+                        currentPendingInputs.length > 0
                           ? {
-                              count: pendingComposerInputs.length,
-                              label: `${pendingComposerInputs.length} pending input${pendingComposerInputs.length === 1 ? "" : "s"}`,
+                              count: currentPendingInputs.length,
+                              label: `${currentPendingInputs.length} pending input${currentPendingInputs.length === 1 ? "" : "s"}`,
                               onOpen: openPendingTakeover,
                             }
                           : null
