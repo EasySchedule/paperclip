@@ -229,6 +229,19 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     }
     expect(await service.list(legacyCompany)).toHaveLength(2);
     expect(await db.select().from(companySkills).where(eq(companySkills.companyId, legacyCompany))).toHaveLength(2);
+    files = { ...files, 'new/SKILL.md': md('new skill') };
+    const newKeys: string[] = [];
+    for (const source of await service.list(legacyCompany)) {
+      const discovery = await service.refresh(legacyCompany, source.id, context);
+      const saved = await service.refresh(legacyCompany, source.id, context, {
+        revision: discovery.source.revision, selectedPaths: ['one/SKILL.md', 'new/SKILL.md'], excludedFolders: [],
+      });
+      expect(saved.imported).toHaveLength(1);
+      newKeys.push(saved.imported[0]!.key);
+      expect((await service.refresh(legacyCompany, source.id, context)).unchanged).toBe(2);
+    }
+    expect(new Set(newKeys).size).toBe(2);
+    expect(await db.select().from(companySkills).where(eq(companySkills.companyId, legacyCompany))).toHaveLength(4);
   });
 
   it('routes legacy folder URLs with slash-containing refs through the source importer', async () => {

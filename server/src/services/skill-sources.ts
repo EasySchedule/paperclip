@@ -50,7 +50,7 @@ export function skillSourceService(db: Db) {
       const old = previous.find(entry => entry.path === candidate.path);
       const skill = old?.skillId ? await skills.getById(source.companyId, old.skillId) : null;
       await context.authorize(skill ? 'skills.update' : 'skills.import', {
-        sourceType: 'git', sourceLocator: source.repositoryUrl, ...(skill ? { skillId: skill.id, skillKey: skill.key } : { skillKey: newSkillKey(scan, candidate.path, candidate.name) }),
+        sourceType: 'git', sourceLocator: source.repositoryUrl, ...(skill ? { skillId: skill.id, skillKey: skill.key } : { skillKey: newSkillKey(scan, candidate.path, candidate.name, source.id) }),
       });
     }
   }
@@ -61,8 +61,8 @@ export function skillSourceService(db: Db) {
       if (skill) await context.authorize('skills.edit', { sourceType: 'git', sourceLocator: source.repositoryUrl, skillId: skill.id, skillKey: skill.key });
     }
   }
-  function newSkillKey(scan: ScannedSkillSource, skillPath: string, name: string) {
-    const identity = createHash('sha256').update(`${scan.repositoryId}:${scan.trackingRef}:${skillPath}`).digest('hex').slice(0, 16);
+  function newSkillKey(scan: ScannedSkillSource, skillPath: string, name: string, sourceId: string) {
+    const identity = createHash('sha256').update(`${scan.repositoryId}:${sourceId}:${skillPath}`).digest('hex').slice(0, 16);
     return `github/${scan.repositoryId}/${identity}/${normalizeAgentUrlKey(name) || 'skill'}`;
   }
   async function publish(tx: Tx, source: SourceRow, scan: ScannedSkillSource, selectedPaths: string[], excludedFolders: string[], context: SkillSourceContext, selectionReviewed: boolean): Promise<Omit<SkillSourceRefreshResult, 'source'>> {
@@ -84,7 +84,7 @@ export function skillSourceService(db: Db) {
       if (selection === 'selected' && !candidate.error) {
         const hash = skillSnapshotHash(candidate.files);
         const slug = normalizeAgentUrlKey(candidate.name) || 'skill';
-        const key = current?.key ?? newSkillKey(scan, candidate.path, candidate.name);
+        const key = current?.key ?? newSkillKey(scan, candidate.path, candidate.name, source.id);
         const ownerRepo = scan.fullName.split('/');
         const metadata = { ...(current?.metadata ?? {}), sourceKind: 'github', hostname: 'github.com',
           owner: ownerRepo[0], repo: ownerRepo[1], ref: current?.metadata?.snapshotHash === hash && current.currentVersionId ? current.sourceRef : scan.commitSha, trackingRef: scan.trackingRef,
@@ -147,12 +147,12 @@ export function skillSourceService(db: Db) {
     if (scan.trackingRef === scan.defaultBranch && (await list(companyId)).some(source => source.repositoryUrl.toLowerCase() === scan.repositoryUrl.toLowerCase() && source.trackingRef === 'HEAD')) {
       throw conflict('This repository is already in Sources. Manage its skills there.');
     }
+    const id = randomUUID();
     // New imports are authorized per generated skill identity too, before publishing.
     for (const candidate of scan.skills.filter(candidate => input.selectedPaths.includes(candidate.path) && !candidate.error)) {
       await context.authorize('skills.import', { sourceType: 'git', sourceLocator: scan.repositoryUrl,
-        skillKey: newSkillKey(scan, candidate.path, candidate.name) });
+        skillKey: newSkillKey(scan, candidate.path, candidate.name, id) });
     }
-    const id = randomUUID();
     return db.transaction(async tx => {
       const [source] = await tx.insert(sources).values({ id, companyId, repositoryId: scan.repositoryId, repositoryUrl: scan.repositoryUrl, fullName: scan.fullName,
         trackingRef: scan.trackingRef, connectionId: input.connectionId ?? null, lastAttemptAt: new Date() }).onConflictDoNothing().returning();
