@@ -1,13 +1,14 @@
 import type { Request } from 'express';
 import type { Db } from '@paperclipai/db';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { forbidden } from '../errors.js';
-const mocks = vi.hoisted(() => ({ headers: vi.fn(), managed: vi.fn() }));
-vi.mock('../services/tool-access.js', () => ({ toolAccessService: () => ({ githubReadHeaders: mocks.headers }) }));
+const mocks = vi.hoisted(() => ({ headers: vi.fn(), grantIds: vi.fn(), managed: vi.fn() }));
+vi.mock('../services/tool-access.js', () => ({ toolAccessService: () => ({ githubReadHeaders: mocks.headers, githubReadGrantIds: mocks.grantIds }) }));
 vi.mock('../services/github-operation-credentials.js', () => ({ resolveGitHubOperationCredentials: mocks.managed }));
 import { skillSourceGitHubReader } from '../services/skill-source-github-access.js';
 const actor = (values: Record<string, unknown>) => values as Request['actor'];
 const db = {} as Db;
+beforeEach(() => { mocks.grantIds.mockResolvedValue(['grant']); });
 afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 describe('GitHub source authorization', () => {
   it('reads public repositories anonymously without resolving a token', async () => {
@@ -24,8 +25,18 @@ describe('GitHub source authorization', () => {
     const fetch = vi.fn().mockResolvedValueOnce(new Response('', { status: 401 })).mockResolvedValueOnce(Response.json({ id: 1 })); vi.stubGlobal('fetch', fetch);
     const read = skillSourceGitHubReader(db, 'company', actor({ type: 'board', userId: 'alice', source: 'session' }), 'connection');
     await read('/repos/acme/private');
-    expect(mocks.headers.mock.calls).toEqual([['company', 'connection', 'alice', false, false], ['company', 'connection', 'alice', false, true]]);
+    expect(mocks.headers.mock.calls).toEqual([['company', 'connection', 'alice', false, false, 'grant'], ['company', 'connection', 'alice', false, true, 'grant']]);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('tries each caller-authorized grant when a repository is unavailable through the first', async () => {
+    mocks.grantIds.mockResolvedValue(['personal', 'organization']);
+    mocks.headers.mockImplementation(async (_company, _connection, _user, _local, _force, grant) => ({ Authorization: `Bearer ${grant}` }));
+    const fetch = vi.fn().mockResolvedValueOnce(new Response('', { status: 404 })).mockResolvedValueOnce(Response.json({ id: 42 }));
+    vi.stubGlobal('fetch', fetch);
+    const read = skillSourceGitHubReader(db, 'company', actor({ type: 'board', userId: 'alice' }), 'connection');
+    expect(await read('/repos/acme/shared')).toEqual({ id: 42 });
+    expect(fetch.mock.calls.map(call => new Headers(call[1].headers).get('authorization'))).toEqual(['Bearer personal', 'Bearer organization']);
+    expect(mocks.headers.mock.calls.map(call => call[5])).toEqual(['personal', 'organization']);
   });
   it('rechecks authorization if access is revoked during a repository scan', async () => {
     mocks.headers.mockResolvedValueOnce({ Authorization: 'Bearer allowed' }).mockRejectedValueOnce(forbidden('Authorization revoked.'));

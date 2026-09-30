@@ -108,6 +108,17 @@ const support = await getEmbeddedPostgresTestSupport();
       await expect(toolAccessService(db).githubReadHeaders(companyId, savedConnections.find(connection => connection.name === name)!.id, "alice")).rejects.toThrow(/authorization/);
     }
     await expect(toolAccessService(db).githubReadHeaders(otherCompany.id, ownConnection.id, "alice", true)).rejects.toThrow(/unavailable/);
+    const sharedConnection = savedConnections.find(connection => connection.name === "shared")!;
+    const [ownGrant, otherGrant] = await db.insert(connectionGrants).values([
+      { companyId, connectionId: sharedConnection.id, kind: "user", subjectUserId: "alice", credentialSecretRefs: [{ secretId: personal, configPath: "credentials.authorization", versionSelector: "latest" }] },
+      { companyId, connectionId: sharedConnection.id, kind: "user", subjectUserId: "bob", credentialSecretRefs: [{ secretId: otherPerson, configPath: "credentials.authorization", versionSelector: "latest" }] },
+    ]).returning();
+    const ids = await toolAccessService(db).githubReadGrantIds(companyId, sharedConnection.id, "alice");
+    expect(ids).toHaveLength(2);
+    expect(ids).toContain(ownGrant!.id);
+    expect(ids).not.toContain(otherGrant!.id);
+    expect(await toolAccessService(db).githubReadHeaders(companyId, sharedConnection.id, "alice", false, false, ownGrant!.id)).toEqual({ Authorization: `Bearer ${personal}` });
+    await expect(toolAccessService(db).githubReadHeaders(companyId, sharedConnection.id, "alice", false, false, otherGrant!.id)).rejects.toThrow(/authorization/);
     await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.connectionId, ownConnection.id));
     await expect(toolAccessService(db).githubReadHeaders(companyId, ownConnection.id, "alice")).rejects.toThrow(/authorization/);
     const revokedMembership = await db.update(companyMemberships).set({ status: "inactive" }).where(eq(companyMemberships.principalId, "alice")).returning();

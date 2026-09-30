@@ -91,7 +91,14 @@ BEGIN
       batch_count := batch_count + 1;
       repo_name := (skill.metadata->>'owner') || '/' || (skill.metadata->>'repo');
       repo_url := 'https://github.com/' || lower(repo_name);
-      adopted_tracking_ref := coalesce(nullif(skill.metadata->>'trackingRef', ''), nullif(skill.metadata->>'ref', ''), skill.source_ref, 'main');
+      -- Older imports recorded only the installed commit. Keep explicit tracking
+      -- refs (including intentional commit pins); resolve unknown refs on first refresh.
+      adopted_tracking_ref := coalesce(
+        nullif(skill.metadata->>'trackingRef', ''),
+        CASE WHEN skill.metadata->>'ref' !~* '^[0-9a-f]{40}$' THEN nullif(skill.metadata->>'ref', '') END,
+        CASE WHEN skill.source_ref !~* '^[0-9a-f]{40}$' THEN nullif(skill.source_ref, '') END,
+        'HEAD'
+      );
       skill_path := trim(both '/' from coalesce(skill.metadata->>'repoSkillDir', skill.slug));
       IF skill_path = '.' THEN skill_path := ''; END IF;
       skill_path := CASE WHEN skill_path = '' THEN 'SKILL.md' ELSE skill_path || '/SKILL.md' END;

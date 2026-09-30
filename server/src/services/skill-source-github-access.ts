@@ -7,7 +7,7 @@ import type { GitHubRead } from './github-skill-source.js';
 
 /** Only fixed GitHub API paths are accepted. Credentials never follow redirects. */
 export function skillSourceGitHubReader(db: Db, companyId: string, actor: Request['actor'], connectionId: string | null): GitHubRead {
-  const headers = (force = false): Promise<Record<string, string>> => {
+  const headers = (force = false, grantId?: string | null): Promise<Record<string, string>> => {
     // Re-check the caller and grant for every provider request, including long scans.
     return (async () => {
       if (actor.type === 'agent') {
@@ -25,22 +25,38 @@ export function skillSourceGitHubReader(db: Db, companyId: string, actor: Reques
       }
       if (actor.type !== 'board') throw forbidden('Authentication required.');
       if (!connectionId) return {};
-      return toolAccessService(db).githubReadHeaders(companyId, connectionId, actor.userId ?? null, actor.source === 'local_implicit', force);
+      return toolAccessService(db).githubReadHeaders(companyId, connectionId, actor.userId ?? null, actor.source === 'local_implicit', force, grantId);
     })();
   };
   return async (apiPath: string) => {
     if (!apiPath.startsWith('/repos/') || apiPath.includes('://') || apiPath.startsWith('//')) throw unprocessable('Invalid GitHub repository request.');
-    const request = async (force = false) => fetch(`https://api.github.com${apiPath}`, {
-      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...await headers(force) },
+    const request = async (grantId: string | null | undefined, force = false) => fetch(`https://api.github.com${apiPath}`, {
+      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...await headers(force, grantId) },
       redirect: 'error', signal: AbortSignal.timeout(30_000),
     });
-    let response: Response;
+    let response: Response | undefined;
+    let authorizationError: unknown;
     try {
-      response = await request();
-      if (response.status === 401 && connectionId && actor.type === 'board') response = await request(true);
+      const grantIds = connectionId && actor.type === 'board'
+        ? await toolAccessService(db).githubReadGrantIds(companyId, connectionId, actor.userId ?? null, actor.source === 'local_implicit')
+        : [undefined];
+      for (const grantId of grantIds) {
+        try {
+          response = await request(grantId);
+          if (response.status === 401 && connectionId && actor.type === 'board') response = await request(grantId, true);
+          if (![401, 403, 404].includes(response.status)) break;
+        } catch (error) {
+          if (!(error instanceof Error && 'status' in error)) throw error;
+          authorizationError = error;
+        }
+      }
     } catch (error) {
       if (error instanceof Error && 'status' in error) throw error;
       throw unprocessable('Could not read GitHub. Check your connection and try again.');
+    }
+    if (!response) {
+      if (authorizationError) throw authorizationError;
+      throw forbidden('Reconnect an active GitHub authorization to read this repository.');
     }
     if (!response.ok) {
       const message = response.status === 404 ? 'Repository, branch, or file is unavailable. Check the URL and GitHub repository access.'

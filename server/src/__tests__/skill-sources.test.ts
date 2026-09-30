@@ -44,9 +44,11 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     expect((await skills.readFile(companyId, skill.id, 'assets/image.png'))?.encoding).toBe('base64');
     expect((await skills.readFile(companyId, skill.id, 'scripts/run.sh'))?.executable).toBe(true);
     const before = await skills.listVersions(companyId, skill.id);
+    const installedBefore = (await skills.getById(companyId, skill.id))!;
     commit = 'b'.repeat(40);
     const unchanged = await sources.refresh(companyId, result.source.id, context);
     expect(unchanged.unchanged).toBe(2);
+    expect((await skills.getById(companyId, skill.id))?.updatedAt).toEqual(installedBefore.updatedAt);
     expect(await skills.listVersions(companyId, skill.id)).toHaveLength(before.length);
     expect((await skills.getById(companyId, skill.id))?.sourceRef).toBe(sha);
     const modeChange = await sources.refresh(companyId, result.source.id, { ...context, read: () => githubFixture(files, {}, commit) });
@@ -180,6 +182,31 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     const refreshed = await service.refresh(legacyCompany, adopted[0]!.id, context);
     expect(refreshed.updated[0]).toMatchObject({ id: legacy!.id, key: legacy!.key, slug: legacy!.slug });
     expect((await db.select().from(companySkills).where(eq(companySkills.companyId, legacyCompany))).filter(skill => skill.key === legacy!.key)).toHaveLength(1);
+  });
+
+  it('resolves legacy commit-only imports to the default branch without duplicating skills', async () => {
+    const legacyCompany = randomUUID();
+    await db.insert(companies).values({ id: legacyCompany, name: 'Old imports', issuePrefix: 'OLD' });
+    const [legacy, pinned] = await db.insert(companySkills).values([
+      { companyId: legacyCompany, key: 'legacy/missing-ref', slug: 'old', name: 'Old', markdown: md('old'), sourceType: 'github', sourceRef: sha, metadata: { owner: 'acme', repo: 'skills', ref: sha, repoSkillDir: 'old' } },
+      { companyId: legacyCompany, key: 'legacy/pinned', slug: 'pinned', name: 'Pinned', markdown: md('pinned'), sourceType: 'github', sourceRef: sha, metadata: { owner: 'acme', repo: 'skills', ref: sha, trackingRef: sha, repoSkillDir: 'pinned' } },
+    ]).returning();
+    const migration = await fs.readFile(new URL('../../../packages/db/src/migrations/0291_conscious_secret_warriors.sql', import.meta.url), 'utf8');
+    await db.execute(sql.raw(migration.slice(migration.indexOf('DO $$', migration.indexOf('-- Adopt only')))));
+    const service = skillSourceService(db);
+    const adopted = (await service.sourceForSkill(legacyCompany, legacy!.id))!;
+    expect(adopted.trackingRef).toBe('HEAD');
+    expect((await service.sourceForSkill(legacyCompany, pinned!.id))?.trackingRef).toBe(sha);
+    files = { 'old/SKILL.md': md('updated') }; commit = 'd'.repeat(40);
+    await expect(service.create(legacyCompany, { repositoryUrl: 'https://github.com/acme/skills', selectedPaths: ['old/SKILL.md'] }, context)).rejects.toThrow(/already in Sources/);
+    const read = context.read(null);
+    const refreshed = await service.importFromUrl(legacyCompany, 'https://github.com/acme/skills/tree/main/old', { ...context, read: () => async request => {
+      if (request.includes('/commits/') && !['main', commit].includes(decodeURIComponent(request.split('/commits/')[1]!))) throw unprocessable('Not found', { status: 404 });
+      return read(request);
+    } });
+    expect(refreshed.imported[0]).toMatchObject({ id: legacy!.id, sourceRef: commit });
+    expect((await service.sourceForSkill(legacyCompany, legacy!.id))?.trackingRef).toBe('main');
+    expect(await service.list(legacyCompany)).toHaveLength(2);
   });
 
   it('routes legacy folder URLs with slash-containing refs through the source importer', async () => {

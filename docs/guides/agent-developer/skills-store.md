@@ -160,6 +160,9 @@ and history. New versions are created only when package bytes or executable mode
 change; active runs and pinned versions keep their existing content. Skill Studio
 can view and test originals. **Make a copy** creates an independent editable skill.
 
+Older imports with no saved tracking branch resolve the repository’s default branch
+on their first successful refresh. Explicit branch and commit pins are preserved.
+
 Recognizable older GitHub imports are adopted into Sources without refetching or
 changing content; the first successful refresh completes their local snapshots.
 Bundled/catalog, project/local, unsupported-host, and `skills.sh` imports keep their

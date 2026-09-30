@@ -8,7 +8,7 @@ import { auditSkillSnapshot, classifyInventoryKind } from './company-skills.js';
 export type GitHubRead = (apiPath: string) => Promise<unknown>;
 type TreeEntry = { path: string; type: string; mode: string; sha: string; size?: number };
 export type DiscoveredSkill = SkillSourceCandidate & { files: CompanySkillVersionFileInventoryEntry[] };
-export type ScannedSkillSource = SkillSourceDiscovery & { skills: DiscoveredSkill[] };
+export type ScannedSkillSource = SkillSourceDiscovery & { skills: DiscoveredSkill[]; defaultBranch: string };
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_SCAN_BYTES = 100 * 1024 * 1024;
 
@@ -23,7 +23,8 @@ export async function scanGitHubSkills(input: { repositoryUrl: string; trackingR
   const repo = await read(`/repos/${parsed.fullName}`) as { id: number; full_name: string; default_branch: string };
   if (!repo.id || !repo.full_name || !repo.default_branch) throw unprocessable('GitHub returned incomplete repository information.');
   const base = `/repos/${repo.full_name}`;
-  const trackingRef = input.trackingRef || parsed.trackingRef || repo.default_branch;
+  const requestedRef = input.trackingRef || parsed.trackingRef;
+  const trackingRef = !requestedRef || requestedRef === 'HEAD' ? repo.default_branch : requestedRef;
   const commit = await read(`${base}/commits/${encodeURIComponent(input.commitSha || trackingRef)}`) as { sha: string };
   if (!/^[a-f0-9]{40}$/i.test(commit.sha ?? '')) throw unprocessable('GitHub did not return an immutable commit.');
   const tree = await read(`${base}/git/trees/${commit.sha}?recursive=1`) as { tree: TreeEntry[]; truncated?: boolean };
@@ -86,7 +87,8 @@ export async function scanGitHubSkills(input: { repositoryUrl: string; trackingR
       const bytes = await readBlob(entry);
       if (!bytes) { error = `File exceeds the 1 MB limit: ${entry.path}`; continue; }
       const relative = entry.path === root.path ? 'SKILL.md' : entry.path.slice(prefix.length);
-      files.push(snapshotFile(relative, classifyInventoryKind(relative), bytes, entry.mode === '100755'));
+      const kind = relative !== 'SKILL.md' && (entry.mode === '100755' || bytes.subarray(0, 2).toString() === '#!') ? 'script' : classifyInventoryKind(relative);
+      files.push(snapshotFile(relative, kind, bytes, entry.mode === '100755'));
     }
     const markdown = files.find(f => f.path === 'SKILL.md');
     const frontmatter = markdown && markdown.encoding !== 'base64' ? parseFrontmatterMarkdown(markdown.content).frontmatter : {};
@@ -98,5 +100,5 @@ export async function scanGitHubSkills(input: { repositoryUrl: string; trackingR
     skills.push({ path: root.path, name, description, fileCount: inventory.length, error, warnings: findings.filter(f => f.severity === 'warning').map(f => f.message), files });
   }
   return { repositoryId: String(repo.id), repositoryUrl: `https://github.com/${repo.full_name.toLowerCase()}`, fullName: repo.full_name, trackingRef, commitSha: commit.sha,
-    candidates: skills.map(({ files: _files, ...candidate }) => candidate), warnings, skills };
+    defaultBranch: repo.default_branch, candidates: skills.map(({ files: _files, ...candidate }) => candidate), warnings, skills };
 }

@@ -2993,6 +2993,23 @@ function readStdioTemplateId(config: Record<string, unknown>): string {
   return templateId.trim();
 }
 
+async function gitHubReadGrantAccess(db: Db, companyId: string, connectionId: string, userId: string | null, localTrusted: boolean) {
+  const [connection] = await db.select().from(toolConnections).where(and(eq(toolConnections.companyId, companyId), eq(toolConnections.id, connectionId)));
+  if (!connection || !connection.enabled || connection.status !== "active" || asRecord(connection.config).sourceTemplateKey !== "github") {
+    throw forbidden("GitHub connection is unavailable. Choose a connection you can use.");
+  }
+  const [membership] = userId ? await db.select().from(companyMemberships).where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.principalId, userId), eq(companyMemberships.principalType, "user"), eq(companyMemberships.status, "active"))) : [];
+  if (!localTrusted && (!membership || membership.membershipRole === "viewer")) throw forbidden("GitHub access requires an active company member.");
+  const grants = await db.select().from(connectionGrants).where(and(eq(connectionGrants.companyId, companyId), eq(connectionGrants.connectionId, connectionId)));
+  const members = await db.select().from(connectionGrantMembers).where(eq(connectionGrantMembers.companyId, companyId));
+  const allowed = grants.filter(grant => !(grant.kind === "organization" && ["per_user", "per_agent"].includes(connection.credentialPolicy)) && canBrowseProjectRepositoryGrant({
+    grant, userId, activeMember: localTrusted || Boolean(membership), audience: members.filter(member => member.grantId === grant.id).map(member => member.subjectId),
+  }));
+  const legacyShared = !grants.length && connection.credentialPolicy === "shared";
+  if (!allowed.length && !legacyShared) throw forbidden("Choose a GitHub connection with an active authorization you can use.");
+  return { connection, allowed, legacyShared };
+}
+
 export function toolAccessService(
   db: Db,
   options: ToolAccessServiceOptions = {},
@@ -17232,23 +17249,19 @@ export function toolAccessService(
     listProjectRepositories: async (companyId: string, userId: string | null, localTrusted = false) =>
       toolAccessService(db).listGitHubRepositories(companyId, userId, localTrusted),
 
+    // Return identifiers, never credentials, so each attempted read can recheck its grant.
+    githubReadGrantIds: async (companyId: string, connectionId: string, userId: string | null, localTrusted = false): Promise<Array<string | null>> => {
+      const { allowed, legacyShared } = await gitHubReadGrantAccess(db, companyId, connectionId, userId, localTrusted);
+      return legacyShared ? [null] : allowed.map(grant => grant.id);
+    },
+
     // Server-side reads share the same grant audience and credential lifecycle as discovery.
-    githubReadHeaders: async (companyId: string, connectionId: string, userId: string | null, localTrusted = false, forceRefresh = false): Promise<Record<string, string>> => {
-      const [connection] = await db.select().from(toolConnections).where(and(eq(toolConnections.companyId, companyId), eq(toolConnections.id, connectionId)));
-      if (!connection || !connection.enabled || connection.status !== "active" || asRecord(connection.config).sourceTemplateKey !== "github") {
-        throw forbidden("GitHub connection is unavailable. Choose a connection you can use.");
-      }
-      const [membership] = userId ? await db.select().from(companyMemberships).where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.principalId, userId), eq(companyMemberships.principalType, "user"), eq(companyMemberships.status, "active"))) : [];
-      if (!localTrusted && (!membership || membership.membershipRole === "viewer")) throw forbidden("GitHub access requires an active company member.");
-      const grants = await db.select().from(connectionGrants).where(and(eq(connectionGrants.companyId, companyId), eq(connectionGrants.connectionId, connectionId)));
-      const members = await db.select().from(connectionGrantMembers).where(eq(connectionGrantMembers.companyId, companyId));
-      const allowed = grants.filter(grant => !(grant.kind === "organization" && ["per_user", "per_agent"].includes(connection.credentialPolicy)) && canBrowseProjectRepositoryGrant({
-        grant, userId, activeMember: localTrusted || Boolean(membership), audience: members.filter(member => member.grantId === grant.id).map(member => member.subjectId),
-      }));
+    githubReadHeaders: async (companyId: string, connectionId: string, userId: string | null, localTrusted = false, forceRefresh = false, grantId?: string | null): Promise<Record<string, string>> => {
+      const { connection, allowed, legacyShared } = await gitHubReadGrantAccess(db, companyId, connectionId, userId, localTrusted);
       const actor: ActorInfo = { actorType: "user", actorId: userId ?? "board" };
-      if (!grants.length && connection.credentialPolicy === "shared") return resolveCredentialHeaders(connection, actor);
-      if (allowed.length !== 1) throw forbidden("Choose a GitHub connection with one active authorization you can use.");
-      let grant = allowed[0]!;
+      if (legacyShared && !grantId) return resolveCredentialHeaders(connection, actor);
+      let grant = grantId ? allowed.find(candidate => candidate.id === grantId) : allowed.length === 1 ? allowed[0] : undefined;
+      if (!grant) throw forbidden("Choose an active GitHub authorization you can use.");
       if (asRecord(asRecord(connection.config).oauth).connectorProfile === "github.code") {
         grant = await refreshOAuthGrantCredentials({ companyId, connectionId, grantId: grant.id, actor, forceRefresh });
       }
