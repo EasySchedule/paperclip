@@ -130,6 +130,10 @@ describe('skill source selection tree', () => {
       await act(async () => host.querySelector<HTMLInputElement>('[aria-label="Import .agents/one/SKILL.md"]')!.click());
       expect(selection.has('.agents/one/SKILL.md')).toBe(false);
       expect(selection.has('.agents/one/nested/SKILL.md')).toBe(true);
+      // The inspector button owns its keys; Space must not toggle the package checkbox.
+      const inspect = host.querySelector<HTMLButtonElement>('[aria-label="Inspect One"]')!;
+      await act(async () => inspect.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })));
+      expect(selection.has('.agents/one/SKILL.md')).toBe(false);
       await act(async () => changeSearch(host, 'scripts/run.sh'));
       expect(host.querySelector('[data-file-tree-path=".agents/one/SKILL.md/scripts/run.sh"]')).not.toBeNull();
     } finally { await act(async () => root.unmount()); host.remove(); }
