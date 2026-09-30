@@ -12,7 +12,10 @@ function referencesIn(markdown: string) {
   }
   for (const match of text.matchAll(/(?<!`)`([^`\n]+)`(?!`)/g)) {
     const target = match[1]!;
-    if (/^(?:\.\.?\/|references\/|scripts\/|assets\/)[\w.\-/]+\.[a-z][a-z0-9]{0,11}$/i.test(target)) references.push({ target, rootRelative: true });
+    if (/^(?:\.\.?\/|references\/|scripts\/|assets\/)[\w.\-/]+\.[a-z][a-z0-9]{0,11}$/i.test(target)) {
+      // Explicit dot paths belong to the containing document; conventional resource paths start at the package root.
+      references.push({ target, rootRelative: !target.startsWith('.') });
+    }
   }
   return references;
 }

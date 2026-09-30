@@ -147,6 +147,7 @@ import {
   startEnvironmentCustomImageSetupSessionSchema,
   // Company skills
   skillSourceDiscoverySchema,
+  skillSourcePreviewSchema,
   skillSourceCreateSchema,
   skillSourceSelectionSchema,
   companySkillCreateSchema,
@@ -11536,6 +11537,7 @@ for (const [method, path, summary] of [
   ["get", "/api/companies/{companyId}/skill-sources/repositories", "Browse authorized GitHub repositories for skills"],
   ["get", "/api/companies/{companyId}/skill-sources/{sourceId}", "Get a skill source and entries"],
   ["post", "/api/companies/{companyId}/skill-sources/discover", "Discover and validate repository skills"],
+  ["post", "/api/companies/{companyId}/skill-sources/preview", "Preview an audited skill package file at an immutable commit"],
   ["post", "/api/companies/{companyId}/skill-sources", "Import a GitHub skill source"],
   ["patch", "/api/companies/{companyId}/skill-sources/{sourceId}", "Save skill source selection and connection"],
   ["post", "/api/companies/{companyId}/skill-sources/{sourceId}/refresh", "Refresh installed source skills"],
@@ -11544,6 +11546,7 @@ for (const [method, path, summary] of [
   method, path, tags: ["skills"], summary,
   ...(method === "patch" ? { body: skillSourceSelectionSchema }
     : method === "post" && path.endsWith("/discover") ? { body: skillSourceDiscoverySchema }
+    : method === "post" && path.endsWith("/preview") ? { body: skillSourcePreviewSchema }
     : method === "post" && path.endsWith("/skill-sources") ? { body: skillSourceCreateSchema } : {}),
   responses: {
     [method === "post" && path.endsWith("/skill-sources") ? 201 : 200]: r.ok(),
