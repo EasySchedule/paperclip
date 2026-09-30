@@ -318,6 +318,14 @@ const support = await getEmbeddedPostgresTestSupport();
       expect(result.providerQuestion?.options.map(option => option.id)).toContain(`via:composio:${target}`);
       await expect(connectionIntentService(db).request(claims, `via:composio:${target}`)).rejects.toThrow();
     });
+    it.each([false, true])("prefers an exact Motion match over fuzzy Notion (Notion denied: %s)", async denied => {
+      await resetQuestions();
+      if (denied) await seedProvider("notion", "notion_search", "responsible-user", false);
+      const result = await connectionIntentService(db).search(claims, "Help me find Motion tools");
+      expect(result.results[0]?.service).toBe("via:composio:motion");
+      expect(result.providerQuestion?.id).toBe("connection-provider:motion");
+      expect(result.instruction).not.toContain("administratively restricted");
+    });
     it("finds namespaced installed aggregator tools with extra query words", async () => {
       await resetQuestions();
       await seedProvider("executor", "heliotrope:list_records");

@@ -841,6 +841,9 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     await expect(service.complete(toolRequest.id, connection!.id, claims.responsible_user_id!)).rejects.toThrow("cannot satisfy");
     await expect(service.complete(aiRequest.interactionId!, connection!.id, claims.responsible_user_id!)).resolves.toMatchObject({ status: "accepted" });
     expect((await service.request(aiClaims, "anthropic", { purpose: "ai" })).state).toBe("ready");
+    const search = await service.search(aiClaims, "Find Anthropic authentication for this agent");
+    expect(search.results[0]).toMatchObject({ service: "anthropic", state: "ready", connectionId: connection!.id });
+    expect(search.instruction).not.toContain("Share its setupPath");
     await expect(service.request(aiClaims, "anthropic")).rejects.toMatchObject({ status: 422 });
     expect((await service.search(aiClaims, "openrouter")).results[0]).toMatchObject({
       service: "openrouter", methods: [expect.objectContaining({ purpose: "ai", setupPath: expect.any(String) })],

@@ -5,7 +5,9 @@
 split names such as “Agent Mail,” and single-character spelling errors or
 transpositions. Short partial names work too. Capability searches return
 overlapping matches without requiring every query word to occur in the catalog.
-Results are bounded to 40 entries.
+Results are bounded to 40 entries. Exact app names outrank typo matches for
+different apps (for example, Motion is not replaced by Notion). Query preparation
+is shared across the catalog scan.
 
 Discovery includes tool, channel/email, and AI methods. Channel methods follow
 the instance's Chat connectors experimental setting. Each catalog method names
@@ -41,7 +43,8 @@ queries to a provider. Broad provider descriptions are not evidence of support.
 Configured connection metadata remains scoped to the current company and
 identity. Archived and unauthorized catalogs cannot establish an aggregator route.
 
-Built-in connections remain preferred. An aggregator route still requires a
+Built-in connections remain preferred for the same app. Existing AI access is
+checked through the agent's AI binding and credential selection. An aggregator route still requires a
 saved provider choice or a verified explicit user request. Fuzzy retrieval never
 grants consent. A provider connection is not proof that its underlying app is
 authorized. Multiple matching aggregator apps are returned as candidates; the

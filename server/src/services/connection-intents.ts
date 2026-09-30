@@ -19,7 +19,7 @@ import {
 import {
   APP_STORE_DEFINITIONS,
   AGGREGATOR_PRIORITY, AGGREGATOR_NAMES, AGGREGATOR_CATALOG_SOURCES,
-  findAggregatorService, searchAggregatorServices, scoreConnectionSearch, explicitAggregatorQuery, normalizeConnectionQuery, parseAggregatorRoute, aggregatorProviderQuestion,
+  findAggregatorService, searchAggregatorServices, prepareConnectionSearch, scoreConnectionSearch, explicitAggregatorQuery, normalizeConnectionQuery, parseAggregatorRoute, aggregatorProviderQuestion,
   aggregatorContinuationInstruction, isRemoteMcpConnectorId, askUserQuestionsPayloadSchema, askUserQuestionsResultSchema,
   CONNECTABLE_APP_DEFINITIONS,
   connectionIntentPayloadSchema,
@@ -359,6 +359,7 @@ export function connectionIntentService(db: Db) {
     if (!company) throw notFound("Company was not found");
     const explicit = explicitAggregatorQuery(query);
     const serviceQuery = explicit?.serviceQuery ?? query;
+    const preparedQuery = prepareConnectionSearch(serviceQuery);
     const inventory = await connectionInventory(run.companyId);
     const candidates: Array<{ item: ConnectionSearchResultItem; score: number; nameScore: number }> = [];
     const authorizedCatalogs = new Map<string, Awaited<ReturnType<typeof indexedCatalog>>>();
@@ -384,8 +385,10 @@ export function connectionIntentService(db: Db) {
           })),
         };
       }
+      const aiOnly = definition && discoveryMethods(definition).every(method => method.purpose === "ai");
       const matching = inventory.connections.filter((connection) =>
-        sourceSlugForConnection(connection, inventory.applicationsById) === service && connection.status !== "archived" && connection.connectionPurpose !== "ai");
+        sourceSlugForConnection(connection, inventory.applicationsById) === service && connection.status !== "archived"
+        && (aiOnly ? connection.connectionPurpose === "ai" : connection.connectionPurpose !== "ai"));
       // Indexed descriptions can contain private workspace metadata, including
       // for catalog providers. Check each configured connection's audience first.
       const catalogs = await Promise.all(matching.map(async (connection) => {
@@ -399,12 +402,12 @@ export function connectionIntentService(db: Db) {
         return entries;
       }));
       const catalog = catalogs.flat().filter((entry) => entry.status === "active");
-      const { score, nameScore } = scoreConnectionSearch(serviceQuery, [app.slug, app.name],
+      const { score, nameScore } = scoreConnectionSearch(preparedQuery, [app.slug, app.name],
         `${app.description ?? ""} ${app.searchCapabilities} ${catalog.map(tool => `${tool.toolName} ${tool.description ?? ""}`).join(" ")}`);
       if (!score) continue;
       const ready = await usableConnectionForAgent({ companyId: run.companyId, agentId: agent.id,
-        responsibleUserId: run.responsibleUserId!, serviceSlug: service, inventory });
-      const denied = !ready && matching.length > 0 && await administrativeDenial(run.companyId, agent.id, service, inventory);
+        responsibleUserId: run.responsibleUserId!, serviceSlug: service, purpose: aiOnly ? "ai" : undefined, inventory });
+      const denied = !aiOnly && !ready && matching.length > 0 && await administrativeDenial(run.companyId, agent.id, service, inventory);
       candidates.push({ score, nameScore, item: {
         service, name: app.name, description: app.description ?? null, logoUrl: app.branding.logoUrl ?? null,
         methods: app.methods, source: app.source,
@@ -416,9 +419,9 @@ export function connectionIntentService(db: Db) {
         connectionId: ready?.id ?? null,
       }});
     }
-    const publicMatches = searchAggregatorServices(serviceQuery);
+    const publicMatches = searchAggregatorServices(preparedQuery);
     const bestMatches = publicMatches.filter(match => Math.floor(match.nameScore / 100) === Math.floor((publicMatches[0]?.nameScore ?? 0) / 100));
-    const publicService = findAggregatorService(serviceQuery) ?? (bestMatches.length === 1 ? bestMatches[0]!.service : undefined);
+    const publicService = findAggregatorService(serviceQuery, publicMatches) ?? (bestMatches.length === 1 ? bestMatches[0]!.service : undefined);
     // Extract service namespaces only from the current identity's indexed tools.
     // Generic provider search/execute descriptions do not prove app support.
     const indexedServices = new Set<string>();
@@ -436,9 +439,12 @@ export function connectionIntentService(db: Db) {
         }
       }
     }
-    const indexedMatches = [...indexedServices].map(slug => ({ slug, ...scoreConnectionSearch(serviceQuery, [slug]) }))
+    const indexedMatches = [...indexedServices].map(slug => ({ slug, ...scoreConnectionSearch(preparedQuery, [slug]) }))
       .filter(match => match.nameScore > 0).sort((a, b) => b.score - a.score);
-    const exact = candidates.filter(({ item, nameScore }) => (nameScore >= 200 || item.service === publicService?.slug)
+    const bestExternalTier = Math.floor(Math.max(publicMatches[0]?.nameScore ?? 0, indexedMatches[0]?.nameScore ?? 0) / 100);
+    // Native preference applies to the same app or equally strong name matches.
+    // A typo match such as Notion must not hide the distinctly named app Motion.
+    const exact = candidates.filter(({ item, nameScore }) => ((nameScore >= 200 && Math.floor(nameScore / 100) >= bestExternalTier) || item.service === publicService?.slug)
       && (!isRemoteMcpConnectorId(item.service) || (!publicService && !indexedMatches.length)));
     const ranked = () => candidates.sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name))
       .slice(0, 40).map(({ item }) => item);
@@ -544,6 +550,8 @@ export function connectionIntentService(db: Db) {
       : !suggestions && isRemoteMcpConnectorId(results[0]!.service) && results[0]!.state !== "unavailable"
         ? `${results[0]!.name} is an external service. When the user explicitly names this provider, disclose that it handles the connection and requests to the requested app; no additional provider-choice question is necessary. ${results[0]!.state === "ready" ? aggregatorContinuationInstruction(results[0]!.service, "The requested app") : "Call connection_request with the returned service identifier and follow its instruction. Provider setup does not yet verify underlying app access."}`
       : !suggestions && results[0]!.state === "unavailable" ? "This connection is unavailable or administratively restricted. Explain the reason. Do not bypass it using another provider."
+      : results[0]!.state === "ready" && results[0]!.methods.every(method => method.purpose === "ai")
+        ? "AI authentication is available for this agent's next execution. Do not create another connection request or ask the user to reconnect."
       : results[0]!.methods.every(method => method.purpose && method.purpose !== "tool")
         ? "Choose the method relevant to the task using its purpose and label. Share its setupPath with the user to open the existing channel or AI setup flow. These methods do not use the tool connection_request card. Do not claim tools or an inbox are ready before setup finishes."
       : suggestions || results.length > 1 ? "These are ranked connection matches. Choose the relevant service and method using their descriptions and purposes; extra query words need not match. For available or needs_user_action tool methods, call connection_request with the service identifier to present its setup card. For channel or AI methods, share the method's setupPath. Use ready tools as installed. Respect unavailable states and recorded user choices. Clarify only if the intended service is still ambiguous; unrelated matches are not evidence of support."

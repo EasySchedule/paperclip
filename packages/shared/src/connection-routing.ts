@@ -7,7 +7,7 @@ import {
   type RemoteMcpConnectorId,
 } from "./remote-mcp-connectors.js";
 import composioCatalog from "./composio-search-catalog.json" with { type: "json" };
-import { scoreConnectionSearch } from "./connection-search.js";
+import { prepareConnectionSearch, scoreConnectionSearch } from "./connection-search.js";
 
 export const AGGREGATOR_PRIORITY = [
   "composio",
@@ -214,9 +214,10 @@ for (const [toolkit, name] of composioCatalog.toolkits as Array<[string, string]
   }
 }
 
-export function searchAggregatorServices(query: string) {
+export function searchAggregatorServices(query: string | ReturnType<typeof prepareConnectionSearch>) {
+  const prepared = typeof query === "string" ? prepareConnectionSearch(query) : query;
   return AGGREGATOR_SUPPORT_INDEX.map(service => ({ service,
-    ...scoreConnectionSearch(query, [service.slug, service.name, ...service.aliases]),
+    ...scoreConnectionSearch(prepared, [service.slug, service.name, ...service.aliases]),
   })).filter(match => match.nameScore > 0 && !isRemoteMcpConnectorId(match.service.slug))
     .sort((a, b) => b.score - a.score || a.service.slug.localeCompare(b.service.slug));
 }
@@ -235,7 +236,7 @@ export function normalizeConnectionQuery(value: string): string {
     .trim();
 }
 
-export function findAggregatorService(query: string) {
+export function findAggregatorService(query: string, rankedMatches?: ReturnType<typeof searchAggregatorServices>) {
   const normalized = normalizeConnectionQuery(query);
   const exact = AGGREGATOR_SUPPORT_INDEX.find((entry) =>
     [entry.slug, entry.name, ...entry.aliases].some(
@@ -245,9 +246,8 @@ export function findAggregatorService(query: string) {
   if (exact) return exact;
   // Agents often include the desired capability ("HubSpot recent contacts").
   // Whole phrases avoid substring guesses; multiple named services need clarification.
-  const matches = AGGREGATOR_SUPPORT_INDEX.filter((entry) =>
-    scoreConnectionSearch(query, [entry.slug, entry.name, ...entry.aliases]).nameScore >= 500,
-  );
+  const matches = (rankedMatches ?? searchAggregatorServices(query))
+    .filter(match => match.nameScore >= 500).map(match => match.service);
   // "Atlassian Jira" identifies Jira, not both Jira and Atlassian's MCP.
   const phrases = (entry: AggregatorServiceDefinition) => [entry.slug, entry.name, ...entry.aliases]
     .map(normalizeConnectionQuery).filter(name => ` ${normalized} `.includes(` ${name} `));
