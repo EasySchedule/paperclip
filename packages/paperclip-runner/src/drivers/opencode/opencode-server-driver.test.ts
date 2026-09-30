@@ -1022,6 +1022,67 @@ describe("OpenCodeServerDriver", () => {
     await session.close({ reason: "test" });
   });
 
+  it("delivers the settlement event for a runtime request whose turn already failed when the session closes", async () => {
+    await chmod(fixture, 0o755);
+    const root = await mkdtemp(
+      join(tmpdir(), "paperclip-opencode-pending-then-fail-"),
+    );
+    const workspace = await mkdtemp(
+      join(tmpdir(), "paperclip-opencode-pending-then-fail-workspace-"),
+    );
+    roots.push(root, workspace);
+    const driver = new OpenCodeServerDriver({
+      model: "openrouter/deepseek/deepseek-v4-flash-0731",
+      runtimeDirectory: root,
+      command: fixture,
+      environment: {
+        PATH: process.env.PATH,
+        OPENROUTER_API_KEY: "fixture-key",
+      },
+    });
+    const session = await driver.openSession({
+      runId: "run-pending-then-fail",
+      normalizedSessionId: "pending-then-fail",
+      workingDirectory: workspace,
+    });
+
+    const { turnId } = await session.startTurn({
+      message: { role: "user", text: "pending-request-then-turn-fails" },
+    });
+    // The fixture asks a native question, which leaves a runtime request
+    // pending, then fails the same turn through `session.error` without
+    // ever resolving that request.
+    const turnEvents = await collectTurnEvents(session.events());
+    expect(
+      turnEvents.some(
+        (event) => event.eventType === "runtime_request.created",
+      ),
+    ).toBe(true);
+    expect(
+      turnEvents.filter((event) => event.eventType === "turn.failed"),
+    ).toMatchObject([{ turnId }]);
+    expect(session.pendingRuntimeRequests?.()).toHaveLength(1);
+
+    await session.close({ reason: "test" });
+    const closeEvents = await collectTurnEvents(session.events());
+
+    const settlementEvent = closeEvents.find(
+      (event) => event.eventType === "runtime_request.expired",
+    );
+    expect(settlementEvent).toMatchObject({
+      turnId,
+      itemId: "question-native-1",
+    });
+    expect(
+      closeEvents.some(
+        (event) =>
+          event.eventType === "harness.diagnostic" &&
+          event.payload.code === "opencode_late_terminal_turn_event_dropped" &&
+          event.payload.turnId === turnId,
+      ),
+    ).toBe(false);
+  });
+
   it("keeps the session usable after a cancelled turn so the next turn on the same session still completes", async () => {
     await chmod(fixture, 0o755);
     const root = await mkdtemp(

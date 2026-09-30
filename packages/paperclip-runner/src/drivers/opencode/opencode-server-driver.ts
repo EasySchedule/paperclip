@@ -865,6 +865,11 @@ class OpenCodeHarnessSession implements HarnessSession {
     this.#closed = true;
     this.#abort.abort();
     for (const { request } of this.#pendingRuntimeRequests.values()) {
+      // A request can outlive its own turn: the turn can fail or get
+      // cancelled while the request is still pending, which clears
+      // `#activeTurnId` without settling the request. Bypass the
+      // terminal-turn gate so this settlement event still reaches the
+      // consumer instead of getting dropped as a late frame.
       this.#emit(
         request.input === undefined
           ? "runtime_request.cancelled"
@@ -873,6 +878,7 @@ class OpenCodeHarnessSession implements HarnessSession {
           ? harnessRuntimeRequestOutcome(request, { reason: "session_closed" })
           : harnessRuntimeInputExpiredOutcome(request, "provider_process_lost"),
         { turnId: request.turnId, itemId: request.itemId },
+        { bypassTerminalTurnGate: true },
       );
     }
     this.#pendingRuntimeRequests.clear();
@@ -1829,8 +1835,10 @@ class OpenCodeHarnessSession implements HarnessSession {
     eventType: PrpEvent["eventType"],
     payload: Record<string, unknown>,
     refs: { turnId?: string; itemId?: string } = {},
+    options?: { bypassTerminalTurnGate?: boolean },
   ): void {
     if (
+      !options?.bypassTerminalTurnGate &&
       eventType !== "harness.diagnostic" &&
       refs.turnId !== undefined &&
       refs.turnId !== this.#activeTurnId
