@@ -63,3 +63,15 @@ it("reports changes beside an existing lock without removing it or bypassing man
   expect(await fs.readFile(path.join(cwd, "tracked.txt"), "utf8")).toBe("uncommitted work\n");
   expect(await fs.readFile(path.join(cwd, "untracked.txt"), "utf8")).toBe("scratch\n");
 });
+
+it("preserves caller Git configuration without mutating the supplied environment", async () => {
+  const cwd = await repository();
+  await fs.writeFile(path.join(cwd, "untracked.txt"), "scratch\n");
+  const env = {
+    ...process.env, GIT_OPTIONAL_LOCKS: "1", GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "status.showUntrackedFiles", GIT_CONFIG_VALUE_0: "no",
+  };
+  expect((await scan(cwd, ["status", "--porcelain"], env)).stdout).toBe("");
+  expect((await git(cwd, ["status", "--porcelain", "--untracked-files=all"])).stdout).toContain("?? untracked.txt");
+  expect(env.GIT_OPTIONAL_LOCKS).toBe("1");
+});
