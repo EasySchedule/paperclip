@@ -2332,10 +2332,6 @@ export {
   resolveCliAuthChallengeSchema,
   createBoardApiKeySchema,
   currentUserProfileSchema,
-  currentUserPreferencesSchema,
-  updateCurrentUserPreferencesSchema,
-  type CurrentUserPreferences,
-  type UpdateCurrentUserPreferences,
   authSessionSchema,
   updateCurrentUserProfileSchema,
   updateCompanyMemberSchema,
@@ -2800,3 +2796,4 @@ export type { AgentInstructionCandidate } from "./types/agent.js";
 export { resolveAgentInstructionCandidateSchema, type ResolveAgentInstructionCandidate } from "./validators/agent.js";
 
 export { isHeartbeatRunVisibleInMine } from "./heartbeat-inbox.js";
+export * from "./browser-use.js";

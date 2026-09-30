@@ -1,3 +1,4 @@
+import { isAiAuthenticationBlocked } from "./ai-auth-failure.js";
 import { CHAT_COMPLETION_WAKE_REASON, prepareChatCompletionTurn, chatCompletionInstruction, isCompletedOnboardingHandoffWake } from "./chat-completion-delivery.js";
 import { isAgentDirectoryCopy } from "./agent-directory-working-copies.js";
 
@@ -17,6 +18,7 @@ import { settleSlackConversation } from "./slack-conversation-lifecycle.js";
 import { publicChatTaskUrl } from "./chat-task-url.js";
 import { toolActionDeliveryService } from "./tool-action-delivery.js";
 import { githubBotConnectionIdsForRun } from "./chat-github-tools.js";
+import { isBrowserUseConnection } from "./browser-use-client.js";
 import { readQueuedInteractionResponse } from "./queued-interaction-response.js";
 import { AGENT_CHAT_DIRECTIVE, conversationReplay, isConversation, isConversationExecutionWake, isWaitingConversation, prepareConversationTurn, settleConversationTurn } from "./agent-conversations.js";
 import { getConversationConfirmationContext, type ConversationConfirmationContext } from "./conversation-confirmation-context.js";
@@ -4613,6 +4615,7 @@ export async function buildPaperclipRuntimeMcpServers(input: {
             id: toolConnections.id,
             name: toolConnections.name,
             transport: toolConnections.transport,
+            config: toolConnections.config,
           })
           .from(toolConnections)
           .where(
@@ -4626,7 +4629,7 @@ export async function buildPaperclipRuntimeMcpServers(input: {
     .filter(
       (connection) =>
         (connection.transport === "mcp_remote" ||
-          connection.transport === "local_stdio") &&
+          connection.transport === "local_stdio" || isBrowserUseConnection(connection)) &&
         !allInstalledConnectionIds.has(connection.id),
     )
     .map(({ id, name }) => ({ id, name }))
@@ -4643,7 +4646,7 @@ export async function buildPaperclipRuntimeMcpServers(input: {
         connection.credentialPolicy === "per_user" ||
         !isToolConnectionAttentionHealth(connection.healthStatus)) &&
       (connection.transport === "mcp_remote" ||
-        connection.transport === "local_stdio" || githubBotConnectionIds.has(connection.id)),
+        connection.transport === "local_stdio" || isBrowserUseConnection(connection) || githubBotConnectionIds.has(connection.id)),
   );
   const assignedConnectionIds = new Set(
     assignedConnections.map((connection) => connection.id),
@@ -18302,9 +18305,16 @@ export function heartbeatService(
     run: typeof heartbeatRuns.$inferSelect,
     resultJson?: Record<string, unknown> | null,
   ) {
-    const classification = classifyRunLiveness(
-      await buildRunLivenessInput(run, resultJson),
-    );
+    const authRepair = run.status === "failed"
+      ? await connectionIntentService(db).requestForRunAuthFailure(run.id).catch(() => {
+          logger.warn({ runId: run.id }, "Could not attach provider authentication repair; run failure remains available");
+          return null;
+        })
+      : null;
+    const classification = classifyRunLiveness({
+      ...await buildRunLivenessInput(run, resultJson),
+      authenticationRepairRequested: Boolean(authRepair?.interactionId),
+    });
     return db
       .update(heartbeatRuns)
       .set({
@@ -21446,7 +21456,7 @@ export function heartbeatService(
             await finalizeAiConnectionBusyDeferral(run, error, !authorizedNonAssigneeWake);
             return;
           }
-          if (responsibleUserId && issueId && aiBinding.mode === "responsible_user") {
+          if (responsibleUserId && issueId) {
             await connectionIntentService(db).request({ sub: agent.id, company_id: agent.companyId, run_id: run.id, responsible_user_id: responsibleUserId }, aiBinding.provider, { purpose: "ai" }).catch(() => {
               logger.warn({ runId: run.id, agentId: agent.id }, "Could not attach AI connection request; runtime configuration action remains available");
             });
@@ -26453,11 +26463,14 @@ export function heartbeatService(
     options: { suppressImmediateRecovery?: boolean } = {},
   ) {
     try {
+      const source = await getRun(run.id);
       const { postCommitEffects } = await wakeQueue.releaseIssueExecution({
         companyId: run.companyId,
         runId: run.id,
         now: new Date(),
-        suppressImmediateRecovery: options.suppressImmediateRecovery,
+        // A durable authentication card owns recovery. This covers the review path,
+        // while continuation classification blocks periodic generic retries.
+        suppressImmediateRecovery: options.suppressImmediateRecovery || isAiAuthenticationBlocked(source),
       });
       await applyWakeQueuePostCommitEffects(postCommitEffects);
       const completed = await getRun(run.id);
@@ -29276,7 +29289,12 @@ export function heartbeatService(
           }
 
           if (control) {
-            await waitForAdapterStop(control.settled);
+            await waitForAdapterStop(control.settled, undefined, {
+              runId: run.id,
+              adapterType: agent?.adapterType,
+              runtimeMode: run.runtimeMode,
+              abortRequested: control.controller.signal.aborted,
+            });
             const stopped = await getRun(run.id);
             if (stopped && isHeartbeatRunTerminalStatus(stopped.status)) {
               if (
