@@ -4,7 +4,8 @@ export function normalizeConnectionSearch(value: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
-const STOP_WORDS = new Set("a an and are as at be by can connect connection connections contacts do email find for from get help i in is it me my need not of on or our please real service services so some that the their them there this to tool tools use want we with would you your".split(" "));
+const STOP_WORDS = new Set("a an and are as at be by can connect connection connections do find for from get help i in is it me my need not of on or our please real service services so some that the their them there this to tool tools use want we with would you your".split(" "));
+const GENERIC_NAMES = new Set([...STOP_WORDS, "contacts", "email"]);
 
 function oneEditApart(a: string, b: string): boolean {
   if (Math.abs(a.length - b.length) > 1) return false;
@@ -30,7 +31,7 @@ export function scoreConnectionSearch(query: string, names: readonly string[], d
       nameScore = Math.max(nameScore, 1000);
       continue;
     }
-    if (normalizedName.split(" ").every(word => STOP_WORDS.has(word))) continue;
+    if (normalizedName.split(" ").every(word => GENERIC_NAMES.has(word))) continue;
     // Compare short windows so "Agent Mail" and "Circle Back" match compact
     // product names without requiring every word of a task description to match.
     const windowSize = Math.min(6, normalizedName.split(" ").length + 2);

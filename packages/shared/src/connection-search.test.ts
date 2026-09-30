@@ -17,6 +17,10 @@ describe("connection search relevance", () => {
     const base = scoreConnectionSearch("spreadsheets", ["Sheets"], "Read spreadsheets");
     expect(scoreConnectionSearch("please please help me find tools for spreadsheets", ["Sheets"], "Read spreadsheets").score).toBe(base.score);
   });
+  it.each(["email", "contacts"])("retains the capability word %s without treating it as a product name", word => {
+    expect(scoreConnectionSearch(`Find a connection for ${word}`, ["Workspace"], `Search ${word}`).score).toBeGreaterThan(0);
+    expect(scoreConnectionSearch(`Find a connection for ${word}`, [word]).nameScore).toBe(0);
+  });
   it("supports a partial name without turning substrings of prose into service claims", () => {
     expect(scoreConnectionSearch("agen", ["AgentMail"]).nameScore).toBeGreaterThan(0);
     expect(scoreConnectionSearch("notionally similar", ["Notion"]).nameScore).toBe(0);
