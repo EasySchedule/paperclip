@@ -321,6 +321,54 @@ describe("managed GitHub launcher environment", () => {
     expect(result.stdout).toBe(env.PATH);
   });
 
+  it("keeps a launcher-only PATH narrow instead of restoring the managed snapshot", async () => {
+    const fixture = await sandbox("usr/bin");
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-launcher-only", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    // A shell that arrived with only the launcher directory on PATH asked for
+    // exactly that. It is a caller choice, not an empty PATH, so the profile must
+    // not hand back the directories the caller left out.
+    const result = await fixture.runner.execute({ command: "/bin/sh", args: ["-c", '. "$BASH_ENV"; printf "%s" "$PATH"'],
+      env: { HOME: fixture.root, PATH: env.PAPERCLIP_GITHUB_LAUNCHER_DIR, BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR } });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toBe(env.PAPERCLIP_GITHUB_LAUNCHER_DIR);
+    expect(result.stdout).not.toBe(env.PATH);
+  });
+
+  it("keeps empty PATH entries, which tell the shell to search the current directory", async () => {
+    const fixture = await sandbox("usr/bin");
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-empty-entries", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    const launcher = env.PAPERCLIP_GITHUB_LAUNCHER_DIR;
+    for (const inherited of [":/usr/bin", "::/usr/bin", "/usr/bin:", "::/usr/bin:"]) {
+      // The launcher directory is not one of these entries, so the profile has
+      // to produce exactly the caller's list with the launcher in front of it.
+      const result = await fixture.runner.execute({ command: "/bin/sh", args: ["-c", '. "$BASH_ENV"; printf "%s" "$PATH"'],
+        env: { HOME: fixture.root, PATH: inherited, BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR } });
+      expect(result.exitCode, `${inherited}: ${result.stderr}`).toBe(0);
+      expect(result.stdout, inherited).toBe(`${launcher}:${inherited}`);
+    }
+  });
+
+  it("moves the launcher directory to the front of a PATH that also has empty entries", async () => {
+    const fixture = await sandbox("usr/bin");
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-empty-entries-reorder", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    // A login profile can move the launchers and leave empty entries behind at
+    // the same time. Both the move and the empty entries have to survive.
+    const launcher = env.PAPERCLIP_GITHUB_LAUNCHER_DIR;
+    const result = await fixture.runner.execute({ command: "/bin/sh", args: ["-c", '. "$BASH_ENV"; printf "%s" "$PATH"'],
+      env: { HOME: fixture.root, PATH: `::${launcher}::/usr/bin`, BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR } });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`${launcher}::::/usr/bin`);
+  });
+
   it("preserves an explicit remote PATH without querying the remote environment", async () => {
     const fixture = await sandbox("custom/bin");
     const env = await prepareGitHubOperationLaunchers({

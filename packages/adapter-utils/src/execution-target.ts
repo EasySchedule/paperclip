@@ -1732,21 +1732,38 @@ export async function prepareGitHubOperationLaunchers(input: {
   // package runner adds its own node_modules/.bin entry and then execs a shell,
   // and replacing PATH would delete it. Remove an earlier copy of the launcher
   // directory instead of collecting one per source, because a login shell reads
-  // more than one staged profile. An empty PATH is not a caller choice, so fall
-  // back to the managed snapshot. This matches github-launcher.ts, which keeps
+  // more than one staged profile. This matches github-launcher.ts, which keeps
   // originalPath and filters out its own directory.
+  //
+  // The managed snapshot is a fallback for an absent PATH only. A shell that
+  // arrived with a nonempty PATH has made a choice, and one whose every entry
+  // was the launcher directory has deliberately narrowed the search. Restoring
+  // the snapshot for either case would hand back directories the caller removed.
   const prependLauncherPath = [
     `launcher_directory=${shellQuote(directory)}`,
     `fallback_path=${shellQuote(managedPath)}`,
-    "rest=${PATH-}",
-    "kept=",
-    'while [ -n "$rest" ]; do',
-    '  entry=${rest%%:*}',
-    '  case $rest in *:*) rest=${rest#*:} ;; *) rest= ;; esac',
-    '  [ "$entry" = "$launcher_directory" ] || kept=${kept:+"$kept:"}$entry',
-    "done",
-    'if [ -n "$kept" ]; then export PATH="$launcher_directory:$kept"; else export PATH="$fallback_path"; fi',
-    "unset launcher_directory fallback_path rest entry kept",
+    "inherited=${PATH-}",
+    'if [ -z "$inherited" ]; then',
+    '  export PATH="$fallback_path"',
+    "else",
+    // Append a delimiter so the loop also sees a trailing empty entry, and count
+    // the survivors separately from `kept` so that a kept-but-empty entry and no
+    // entry at all stay distinguishable. Both distinctions carry caller intent.
+    "  kept=",
+    "  count=0",
+    "  rest=$inherited:",
+    '  while [ -n "$rest" ]; do',
+    '    entry=${rest%%:*}',
+    '    rest=${rest#*:}',
+    '    if [ "$entry" != "$launcher_directory" ]; then',
+    "      count=$((count + 1))",
+    '      if [ "$count" -eq 1 ]; then kept=$entry; else kept=$kept:$entry; fi',
+    "    fi",
+    "  done",
+    '  if [ "$count" -eq 0 ]; then export PATH="$launcher_directory"',
+    '  else export PATH="$launcher_directory:$kept"; fi',
+    "fi",
+    "unset launcher_directory fallback_path inherited kept count rest entry",
   ].join("\n");
   // Empty merge overrides clear host identity before launch, but Git treats
   // them as an explicit empty author. Remove them once the shell has inherited
