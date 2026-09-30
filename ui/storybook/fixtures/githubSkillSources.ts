@@ -9,6 +9,7 @@ import { skillSourcesApi } from "@/api/skillSources";
 export const COMPANY_ID = "company-storybook";
 export const SOURCE_ID = "source-team-skills";
 export const COMMIT = "a17d36c9e4521f06b932ac670854d1293f24bc18";
+const fixtureSkillId = (entryId: string) => `00000000-0000-4000-8000-${entryId.replace('entry-', '').padStart(12, '0')}`;
 const packageContents: Record<string, Record<string, string | null>> = {
   'SKILL.md': { 'SKILL.md': '---\nname: Team handbook\ndescription: Shared team conventions\n---\nRead [team conventions](references/conventions.md) before starting.\n', 'references/conventions.md': '# Team conventions\n\nKeep changes company-scoped. Report evidence with each review.\n', 'LICENSE': 'Example license text' },
   '.agents/skills/review/SKILL.md': { 'SKILL.md': '---\nname: Code review\ndescription: Review code changes\ncompatibility: Requires Python 3.11 and git.\n---\nRead [the checklist](references/checklist.md). Run `scripts/review.py` when a diff is ready.\n', 'references/checklist.md': '# Review checklist\n\n- Check company boundaries.\n- Test failure handling.\n- Verify migrations.\n', 'scripts/review.py': '#!/usr/bin/env python3\nprint("Ready to review the diff")\n', 'assets/diagram.png': null, 'LICENSE': 'Example license text' },
@@ -46,7 +47,7 @@ export function sourceFixture(): SkillSource {
     entries: candidates.map((candidate, index) => ({
       id: `entry-${index}`, sourceId: SOURCE_ID, path: candidate.path, name: candidate.name,
       description: candidate.description, inspection: candidate.inspection, error: candidate.error, present: true,
-      skillId: index < 2 ? `skill-${index}` : null,
+      skillId: index < 2 ? fixtureSkillId(`entry-${index}`) : null,
       selection: index < 2 ? "selected" : index === 4 ? "excluded" : "new",
     })),
   };
@@ -80,7 +81,7 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
   if (options.journey && sources[0]) {
     sources[0].entries = sources[0].entries.filter(entry => options.refreshed || !entry.path.includes('/security/')).map(entry => ({
       ...entry,
-      skillId: entry.error || entry.path.includes('/security/') ? null : `skill-${entry.id}`,
+      skillId: entry.error || entry.path.includes('/security/') ? null : fixtureSkillId(entry.id),
       selection: entry.error ? 'excluded' : entry.path.includes('/security/') ? 'new' : 'selected',
     }));
   }
@@ -142,7 +143,7 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
       const next: SkillSourceEntry = { ...entry, selection: selected ? "selected" : "excluded" };
       if (selected && entry.error) warnings.push(`${entry.path}: ${entry.error}`);
       else if (selected && !entry.skillId) {
-        next.skillId = `skill-${entry.id}`;
+        next.skillId = fixtureSkillId(entry.id);
         imported.push(importedSkill(source, next));
       } else if (selected) unchanged++;
       return next;
@@ -223,4 +224,3 @@ export function installFixtures(empty: boolean, needsConnection: boolean, option
     Object.assign(foldersApi, originalFolders);
   };
 }
-

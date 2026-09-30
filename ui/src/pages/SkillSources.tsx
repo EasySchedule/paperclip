@@ -1,7 +1,7 @@
 import { GithubIcon } from "@/components/icons/github-icon";
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Plus, ExternalLink, Check, Lock, GitBranch } from 'lucide-react';
+import { RefreshCw, Plus, ExternalLink, Check, Lock, GitBranch, FileText } from 'lucide-react';
 import { parseGitHubSkillRepositoryUrl, type SkillSource, type SkillSourceDiscovery, type SkillSourceRefreshResult } from '@paperclipai/shared';
 import { Link, useNavigate, useParams } from '@/lib/router';
 import { useCompany } from '@/context/CompanyContext';
@@ -16,12 +16,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { SkillPackagePreview } from './skills/SkillPackagePreview';
 import { SkillSourceTree, type SkillTreeCandidate } from './skills/SkillSourceTree';
 import { timeAgo } from '@/lib/timeAgo';
+import { skillRoute } from '@/lib/company-skill-routes';
 import { consumeSkillSourceReturn, rememberSkillSourceReturn } from '@/lib/skill-source-connect-return';
 
 const sourceKey = (companyId: string) => queryKeys.skillSources.all(companyId);
-function resultMessage(result: SkillSourceRefreshResult) {
-  return `${result.imported.length} imported · ${result.updated.length} updated · ${result.unchanged} unchanged${result.warnings.length ? ` · ${result.warnings.length} warnings` : ''}`;
-}
 export function SkillSources() {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const { sourceId } = useParams<{ sourceId: string }>();
@@ -36,7 +34,7 @@ export function SkillSources() {
     await Promise.all([client.invalidateQueries({ queryKey: sourceKey(companyId) }), client.invalidateQueries({ queryKey: queryKeys.companySkills.list(companyId) })]);
   }
   const refresh = useMutation({ mutationFn: (id: string) => skillSourcesApi.refresh(companyId, id), onSuccess: async result => {
-    setResults(prev => ({ ...prev, [result.source.id]: resultMessage(result) })); await invalidate();
+    setResults(prev => ({ ...prev, [result.source.id]: result.warnings.join(' · ') })); await invalidate();
   }, onError: (error, id) => { setResults(prev => ({ ...prev, [id]: error.message })); void invalidate(); } });
   const disconnect = useMutation({ mutationFn: (id: string) => skillSourcesApi.disconnect(companyId, id), onSuccess: invalidate });
   const activeSource = query.data?.find(source => source.id === sourceId);
@@ -53,12 +51,13 @@ export function SkillSources() {
     {query.data?.length === 0 && <div className="flex flex-col items-start gap-3 py-8"><p className="text-sm text-muted-foreground">No repositories added yet. Import your skills to make them available in {selectedCompany?.name ?? 'this company'}.</p><Button variant="outline" onClick={() => navigate('/skills/sources/new')}>Import from GitHub</Button></div>}
     <div className="divide-y divide-border">
       {query.data?.map(source => {
+        const installed = source.entries.filter(entry => entry.skillId);
         const newCount = source.entries.filter(entry => entry.selection === 'new' && entry.present).length;
         return <section key={source.id} className="flex flex-col gap-3 py-4" aria-label={source.fullName}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3"><GithubIcon className="mt-1 size-5 shrink-0 text-muted-foreground" /><div className="min-w-0">
               <Link to={`/skills/sources/${source.id}`} className="break-all text-sm font-medium">{source.fullName}</Link>
-              <p className="text-xs text-muted-foreground"><span className="font-mono">{source.trackingRef === 'HEAD' ? 'Default branch' : source.trackingRef}</span> · {source.entries.filter(entry => entry.skillId).length} imported · {source.enabled ? source.lastSuccessAt ? `Refreshed ${timeAgo(source.lastSuccessAt)}` : 'Not refreshed yet' : 'Disconnected'}</p>
+              <p className="text-xs text-muted-foreground"><span className="font-mono">{source.trackingRef === 'HEAD' ? 'Default branch' : source.trackingRef}</span> · {installed.length} imported · {source.enabled ? source.lastSuccessAt ? `Refreshed ${timeAgo(source.lastSuccessAt)}` : 'Not refreshed yet' : 'Disconnected'}</p>
               {newCount > 0 && <Link to={`/skills/sources/${source.id}`} className="text-xs underline">{newCount} new {newCount === 1 ? 'skill' : 'skills'} available</Link>}
             </div></div>
             <div className="flex flex-wrap items-center gap-2">
@@ -66,6 +65,15 @@ export function SkillSources() {
               <Button size="sm" variant="ghost" onClick={() => navigate(`/skills/sources/${source.id}`)}>Manage skills</Button>
             </div>
           </div>
+          {installed.length > 0 && <ul className="ml-8 min-w-0" aria-label={`Installed skills from ${source.fullName}`}>
+            {installed.map(entry => <li key={entry.id}>
+              <Link to={skillRoute(entry.skillId!)} title={entry.path} className="group flex min-w-0 items-center gap-2 rounded-sm py-1 text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate font-medium group-hover:underline">{entry.name}</span>
+                {entry.description && <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{entry.description}</span>}
+              </Link>
+            </li>)}
+          </ul>}
           {results[source.id] && <p role="status" className="text-xs text-muted-foreground">{results[source.id]}</p>}
           {source.lastError && source.lastAttemptAt && <p className="text-xs text-muted-foreground">Last attempt {timeAgo(source.lastAttemptAt)}</p>}
           {source.lastError && <p role="alert" className="text-sm text-destructive">{source.lastError} <Link to={`/skills/sources/${source.id}`} className="underline">Review source</Link></p>}
@@ -78,7 +86,7 @@ export function SkillSources() {
       })}
     </div>
     {sourceId && (sourceId === 'new' || activeSource) && <SourceDialog key={`${companyId}:${sourceId}`} companyId={companyId} source={activeSource} onClose={() => navigate('/skills/sources')} onSaved={async result => {
-      setResults(prev => ({ ...prev, [result.source.id]: resultMessage(result) })); await invalidate(); navigate('/skills/sources');
+      setResults(prev => ({ ...prev, [result.source.id]: result.warnings.join(' · ') })); await invalidate(); navigate('/skills/sources');
     }} />}
     {sourceId && sourceId !== 'new' && query.isSuccess && !activeSource && <p role="alert" className="text-sm text-destructive">Source not found.</p>}
   </div>;
