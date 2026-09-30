@@ -671,7 +671,8 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     await db.update(issues).set({ executionRunId: runId }).where(eq(issues.id, issueId));
     await db.update(heartbeatRuns).set({ runtimeMode: "native", nativeIssueId: issueId }).where(eq(heartbeatRuns.id, runId));
     const authority = new PaperclipRunnerToolAuthority(db, { companyId: claims.company_id, issueId, agentId: claims.sub, runId });
-    const result = await authority.execute({ tool: "connections_search", callId: "discover", arguments: { query: "github" } });
+    const query = "Please help me find tools to continue this task. ".repeat(8) + "Look at my Git Hub pull requests";
+    const result = await authority.execute({ tool: "connections_search", callId: "discover", arguments: { query } });
     expect(result).toMatchObject({ results: expect.arrayContaining([expect.objectContaining({ service: "github", state: "available" })]) });
     const request = await authority.execute({ tool: "connection_request", callId: "request", arguments: { service: "github" } });
     expect(request).toMatchObject({ state: "needs_user_action", interactionId: expect.any(String) });
@@ -841,7 +842,9 @@ describeEmbeddedPostgres("connectionIntentService", () => {
     await expect(service.complete(aiRequest.interactionId!, connection!.id, claims.responsible_user_id!)).resolves.toMatchObject({ status: "accepted" });
     expect((await service.request(aiClaims, "anthropic", { purpose: "ai" })).state).toBe("ready");
     await expect(service.request(aiClaims, "anthropic")).rejects.toMatchObject({ status: 422 });
-    expect((await service.search(aiClaims, "openrouter")).results.some(result => result.service === "openrouter")).toBe(false);
+    expect((await service.search(aiClaims, "openrouter")).results[0]).toMatchObject({
+      service: "openrouter", methods: [expect.objectContaining({ purpose: "ai", setupPath: expect.any(String) })],
+    });
   });
 
 
