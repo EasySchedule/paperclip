@@ -131,6 +131,7 @@ export function SkillSourceTree({ candidates, selected, excludedFolders, onChang
           return <span className="flex min-w-0 items-baseline gap-2" title={[skill.path, skill.description, skill.error].filter(Boolean).join('\n')}>
             <span className="max-w-full shrink-0 truncate font-medium text-foreground">{skill.name}</span>
             {(skill.error ?? skill.description) && <span className={`min-w-0 flex-1 truncate text-xs ${skill.error ? 'text-destructive' : 'text-muted-foreground'}`}>{skill.error ?? skill.description}</span>}
+            <span className="hidden max-w-32 shrink-0 truncate font-mono text-xs text-muted-foreground md:inline" title={skill.path}>{skill.path.split('/').at(-2) ?? '.'}/</span>
           </span>;
         }}
         renderNodeExtra={node => {

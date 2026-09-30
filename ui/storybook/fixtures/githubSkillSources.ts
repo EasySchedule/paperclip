@@ -18,6 +18,7 @@ const packageContents: Record<string, Record<string, string | null>> = {
 };
 function inspection(skillPath: string): SkillPackageInspection {
   return {
+    commitSha: COMMIT,
     files: Object.entries(packageContents[skillPath]!).map(([path, content]) => ({ path, kind: path === 'SKILL.md' ? 'skill' : path.startsWith('scripts/') ? 'script' : path.startsWith('assets/') ? 'asset' : 'reference', encoding: content === null ? 'base64' : 'utf8', sizeBytes: content === null ? 2048 : new TextEncoder().encode(content).length, executable: path.startsWith('scripts/') })),
     requirements: skillPath.includes('/security/') ? 'Requires Python 3.11.' : skillPath.includes('/review/') ? 'Requires Python 3.11 and git.' : null,
     references: skillPath.includes('/security/') ? [

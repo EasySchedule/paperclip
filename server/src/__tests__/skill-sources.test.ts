@@ -64,6 +64,9 @@ describe.skipIf(!support.supported)('skill source persistence', () => {
     expect(changed.imported).toHaveLength(0);
     expect(changed.source.entries.find(entry => entry.path === 'new/SKILL.md')?.selection).toBe('new');
     expect(changed.source.entries.find(entry => entry.path === 'elsewhere/one/SKILL.md')?.present).toBe(false);
+    // Removed entries keep the commit their retained manifest actually describes.
+    expect(changed.source.entries.find(entry => entry.path === 'elsewhere/one/SKILL.md')?.inspection?.commitSha).toBe('b'.repeat(40));
+    expect(changed.source.lastScanCommit).toBe('c'.repeat(40));
     expect((await skills.getById(companyId, result.imported.find(item => item.id !== skill.id)!.id))?.metadata?.skillSourceState).toBe('removed');
     // Installed files are local snapshots: loss of GitHub access does not affect reads or runtime materialization.
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));

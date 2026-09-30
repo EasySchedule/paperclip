@@ -2,6 +2,8 @@ import type { CompanySkill } from './company-skill.js';
 
 /** Metadata from an audited, immutable repository scan; file contents are fetched on demand. */
 export interface SkillPackageInspection {
+  /** Commit of this manifest, retained when a package disappears on a later refresh. */
+  commitSha?: string;
   files: SkillPackageFile[];
   requirements: string | null;
   references: SkillPackageReference[];

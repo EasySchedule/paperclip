@@ -105,6 +105,7 @@ describe('GitHub skill repository discovery', () => {
     }, { 'one/scripts/run.sh': '100755' }));
     const candidate = result.candidates.find(candidate => candidate.path === 'one/SKILL.md')!;
     expect(candidate.inspection?.requirements).toBe('Requires Python 3.11 and git.');
+    expect(candidate.inspection?.commitSha).toBe(sha);
     expect(candidate.inspection?.files).toEqual([
       expect.objectContaining({ path: 'SKILL.md', encoding: 'utf8', executable: false }),
       expect.objectContaining({ path: 'scripts/run.sh', kind: 'script', executable: true }),

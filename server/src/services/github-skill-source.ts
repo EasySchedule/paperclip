@@ -98,7 +98,7 @@ export async function scanGitHubSkills(input: { repositoryUrl: string; trackingR
     const description = typeof frontmatter.description === 'string' ? frontmatter.description : null;
     const findings = !error ? await auditSkillSnapshot(files) : [];
     error ??= findings.filter(f => f.severity === 'error').map(f => `${f.path ?? root.path}: ${f.message}`).join(' ') || null;
-    const inspection = inspectSkillPackage(root.path, files, entries.map(entry => entry.path), frontmatter, findings);
+    const inspection = { ...inspectSkillPackage(root.path, files, entries.map(entry => entry.path), frontmatter, findings), commitSha: commit.sha };
     skills.push({ path: root.path, name, description, fileCount: inventory.length, error, warnings: inspection.warnings, inspection, files });
   }
   return { repositoryId: String(repo.id), repositoryUrl: `https://github.com/${repo.full_name.toLowerCase()}`, fullName: repo.full_name, trackingRef, commitSha: commit.sha,
