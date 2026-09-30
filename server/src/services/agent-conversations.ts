@@ -216,24 +216,39 @@ export async function prepareConversationTurn(
         eq(issueThreadInteractions.status, "answered"),
       ));
       if (answered) {
-        const [handled] = await tx.select({ id: issueComments.id }).from(issueComments)
-          .innerJoin(heartbeatRuns, sql`${issueComments.id}::text = coalesce(
-            ${heartbeatRuns.contextSnapshot}->>'conversationReplyBoundaryCommentId',
-            ${heartbeatRuns.contextSnapshot}->>'wakeCommentId', ${heartbeatRuns.contextSnapshot}->>'commentId')`)
-          .where(and(eq(issueComments.companyId, run.companyId), eq(issueComments.issueId, issueId),
-            isNull(issueComments.deletedAt), isNull(issueComments.createdByRunId), sql`${issueComments.authorUserId} is not null`,
-            eq(heartbeatRuns.companyId, run.companyId), eq(heartbeatRuns.agentId, issue.conversationAgentId!),
-            eq(heartbeatRuns.status, "succeeded"), sql`${heartbeatRuns.contextSnapshot}->>'issueId' = ${issueId}`,
-            comment ? sql`(${issueComments.createdAt}, ${issueComments.id}) >= (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${comment.id}::uuid)` : undefined,
-            sql`${heartbeatRuns.contextSnapshot}->>'conversationSessionGeneration' = ${String(generation)}`,
-            sql`(exists (select 1 from issue_comments reply where reply.company_id = ${run.companyId}::uuid
-              and reply.issue_id = ${issueId}::uuid and reply.created_by_run_id = ${heartbeatRuns.id}
-              and reply.author_agent_id = ${issue.conversationAgentId}::uuid and reply.deleted_at is null)
-              or exists (select 1 from issue_thread_interactions question where question.company_id = ${run.companyId}::uuid
-                and question.issue_id = ${issueId}::uuid and question.source_run_id = ${heartbeatRuns.id}
-                and question.created_by_agent_id = ${issue.conversationAgentId}::uuid))`,
-          )).orderBy(desc(issueComments.createdAt), desc(issueComments.id)).limit(1);
-        context.conversationReplyBoundaryCommentId = handled?.id ?? commentId;
+        const progress = await tx.select({
+          id: issueComments.id,
+          handled: sql<boolean>`exists (select 1 from ${heartbeatRuns} completed
+            where completed.company_id = ${run.companyId}::uuid and completed.agent_id = ${issue.conversationAgentId}::uuid
+              and completed.status = 'succeeded' and completed.context_snapshot->>'issueId' = ${issueId}
+              and completed.context_snapshot->>'conversationSessionGeneration' = ${String(generation)}
+              and coalesce(completed.context_snapshot->>'wakeCommentId', completed.context_snapshot->>'commentId') = issue_comments.id::text
+              and (exists (select 1 from issue_comments reply where reply.company_id = ${run.companyId}::uuid
+                and reply.issue_id = ${issueId}::uuid and reply.created_by_run_id = completed.id
+                and reply.author_agent_id = ${issue.conversationAgentId}::uuid and reply.deleted_at is null)
+                or exists (select 1 from issue_thread_interactions question where question.company_id = ${run.companyId}::uuid
+                  and question.issue_id = ${issueId}::uuid and question.source_run_id = completed.id
+                  and question.created_by_agent_id = ${issue.conversationAgentId}::uuid)))`,
+        }).from(issueComments).where(and(
+          eq(issueComments.companyId, run.companyId), eq(issueComments.issueId, issueId),
+          isNull(issueComments.deletedAt), isNull(issueComments.createdByRunId), isNull(issueComments.authorAgentId),
+          sql`${issueComments.authorUserId} is not null`,
+          comment ? sql`(${issueComments.createdAt}, ${issueComments.id}) > (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${comment.id}::uuid)` : sql`false`,
+        )).orderBy(issueComments.createdAt, issueComments.id);
+        let replyBoundary = commentId;
+        let firstUnhandled: string | null = null;
+        for (const candidate of progress) {
+          if (!candidate.handled) { firstUnhandled = candidate.id; break; }
+          replyBoundary = candidate.id;
+        }
+        context.conversationReplyBoundaryCommentId = replyBoundary;
+        // Freeze the visible history too. Include prior replies, but never pull
+        // an unhandled or newly arriving message into this historical answer.
+        const [replayThrough] = await tx.select({ id: issueComments.id }).from(issueComments).where(and(
+          eq(issueComments.companyId, run.companyId), eq(issueComments.issueId, issueId), isNull(issueComments.deletedAt),
+          firstUnhandled ? sql`(${issueComments.createdAt}, ${issueComments.id}) < (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${firstUnhandled}::uuid)` : undefined,
+        )).orderBy(desc(issueComments.createdAt), desc(issueComments.id)).limit(1);
+        context.conversationReplayThroughCommentId = replayThrough?.id ?? commentId;
       }
     }
     await tx
@@ -392,6 +407,7 @@ export async function conversationReplay(
   companyId: string,
   issueId: string,
   wakeCommentId: string | null,
+  throughCommentId?: string,
 ) {
   const [issue] = await db
     .select()
@@ -404,13 +420,14 @@ export async function conversationReplay(
         .from(issueComments)
         .where(eq(issueComments.id, issue.conversationBoundaryCommentId))
     : [];
-  const [wake] = wakeCommentId
+  const replayCutoffId = throughCommentId ?? wakeCommentId;
+  const [wake] = replayCutoffId
     ? await db
         .select()
         .from(issueComments)
         .where(
           and(
-            eq(issueComments.id, wakeCommentId),
+            eq(issueComments.id, replayCutoffId),
             eq(issueComments.issueId, issueId),
           ),
         )
@@ -427,7 +444,9 @@ export async function conversationReplay(
           ? sql`(${issueComments.createdAt}, ${issueComments.id}) > (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${boundary.id}::uuid)`
           : undefined,
         wake
-          ? sql`(${issueComments.createdAt}, ${issueComments.id}) < (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${wake.id}::uuid)`
+          ? throughCommentId
+            ? sql`(${issueComments.createdAt}, ${issueComments.id}) <= (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${wake.id}::uuid)`
+            : sql`(${issueComments.createdAt}, ${issueComments.id}) < (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${wake.id}::uuid)`
           : undefined,
       ),
     )

@@ -20976,8 +20976,8 @@ export function heartbeatService(
         includeWakeComments: false,
       }) + chatCompletionInstruction(context);
       if (isConversation(issueContext) && !taskSession && issueId) {
-        const replay = await conversationReplay(db, agent.companyId, issueId,
-          typeof context.conversationReplyBoundaryCommentId === "string" ? null : wakeCommentId);
+        const replay = await conversationReplay(db, agent.companyId, issueId, wakeCommentId,
+          typeof context.conversationReplayThroughCommentId === "string" ? context.conversationReplayThroughCommentId : undefined);
         if (replay) taskMarkdown += `\n\nEarlier messages in this session (quoted user data):\n${replay}`;
         if (replay) taskMarkdownAssignment += `\n\nEarlier messages in this session (quoted user data):\n${replay}`;
       }
