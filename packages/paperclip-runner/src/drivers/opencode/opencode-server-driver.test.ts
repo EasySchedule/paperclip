@@ -1022,7 +1022,7 @@ describe("OpenCodeServerDriver", () => {
     await session.close({ reason: "test" });
   });
 
-  it("delivers the settlement event for a runtime request whose turn already failed when the session closes", async () => {
+  it("delivers the settlement event for a runtime request whose turn fails through the same single-pass consumer that reads the turn", async () => {
     await chmod(fixture, 0o755);
     const root = await mkdtemp(
       join(tmpdir(), "paperclip-opencode-pending-then-fail-"),
@@ -1051,34 +1051,54 @@ describe("OpenCodeServerDriver", () => {
     });
     // The fixture asks a native question, which leaves a runtime request
     // pending, then fails the same turn through `session.error` without
-    // ever resolving that request.
+    // ever resolving that request. `collectTurnEvents` reads exactly one
+    // pass and stops at the turn's terminal event, the same rule the
+    // production consumer applies (see its doc comment above). The
+    // settlement event must arrive inside that same pass: a production
+    // consumer that stops at `turn.failed` never opens a second read
+    // afterward, so a settlement event that only `close()` produced later
+    // would never reach it.
     const turnEvents = await collectTurnEvents(session.events());
     expect(
       turnEvents.some(
         (event) => event.eventType === "runtime_request.created",
       ),
     ).toBe(true);
-    expect(
-      turnEvents.filter((event) => event.eventType === "turn.failed"),
-    ).toMatchObject([{ turnId }]);
-    expect(session.pendingRuntimeRequests?.()).toHaveLength(1);
-
-    await session.close({ reason: "test" });
-    const closeEvents = await collectTurnEvents(session.events());
-
-    const settlementEvent = closeEvents.find(
+    const settlementIndex = turnEvents.findIndex(
       (event) => event.eventType === "runtime_request.expired",
     );
-    expect(settlementEvent).toMatchObject({
+    const terminalIndex = turnEvents.findIndex(
+      (event) => event.eventType === "turn.failed",
+    );
+    expect(settlementIndex).toBeGreaterThanOrEqual(0);
+    expect(terminalIndex).toBeGreaterThanOrEqual(0);
+    // The settlement fact must precede the turn's terminal event, or a
+    // consumer that stops reading at that terminal event misses it.
+    expect(settlementIndex).toBeLessThan(terminalIndex);
+    expect(turnEvents[settlementIndex]).toMatchObject({
       turnId,
       itemId: "question-native-1",
     });
+    expect(turnEvents[terminalIndex]).toMatchObject({ turnId });
     expect(
-      closeEvents.some(
+      turnEvents.some(
         (event) =>
           event.eventType === "harness.diagnostic" &&
           event.payload.code === "opencode_late_terminal_turn_event_dropped" &&
           event.payload.turnId === turnId,
+      ),
+    ).toBe(false);
+    // The request already settled with the turn; nothing is left pending
+    // for `close()` to settle a second time.
+    expect(session.pendingRuntimeRequests?.()).toHaveLength(0);
+
+    await session.close({ reason: "test" });
+    const closeEvents = await collectTurnEvents(session.events());
+    expect(
+      closeEvents.some((event) =>
+        ["runtime_request.expired", "runtime_request.cancelled"].includes(
+          event.eventType,
+        ),
       ),
     ).toBe(false);
   });
