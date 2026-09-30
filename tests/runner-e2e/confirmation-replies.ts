@@ -63,6 +63,11 @@ function asksWhichProposal(body: string, options: string[] = []): boolean {
   // about details rather than choosing a proposal. "Garden club" is this
   // fixture's named scope, not a wildcard for any modifier.
   const scopedChoice = /\bwhich\s+(?:(?:pending|current|proposed|available|separate|two)\s+|garden[\s-]+club\s+)?(?:one|ones|item|items|proposal|proposals|project|projects|task|tasks|option|options)\b/i;
+  // Structured forms can ask imperatively, without a question mark. Require
+  // both named alternatives plus an explicit proposal-selection instruction.
+  const namedOptions = options.some(option => /\b(?:welcome\s+)?note\b/i.test(option))
+    && options.some(option => /\bposter\b/i.test(option));
+  if (namedOptions && /\b(?:select|choose|pick)\s+(?:(?:all|every|each|one|the|any)(?:\s+of\s+the)?\s+)?proposals?\s+(?:you\s+(?:want|wish)\s+to\s+|to\s+)?(?:approve|authorize)\b/i.test(text)) return true;
   const proposalName = "(?:the\\s+)?(?:(?:welcome\\s+)?note|poster)(?:\\s+proposal)?";
   const choiceIntent = "(?:(?:do|did|would)\\s+you\\s+(?:mean|want|prefer|like)|should\\s+(?:i|we)\\s+(?:start|proceed\\s+with))";
   const directChoice = new RegExp(`\\b${choiceIntent}\\s+${proposalName}\\s+or\\s+${proposalName}(?:,?\\s+or\\s+both)?\\s*\\?`, "i");

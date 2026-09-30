@@ -122,6 +122,19 @@ describe("confirmation-reply independent oracle", () => {
     expect(fixtures.agent.id).toBe(""); // The real wizard must still create the agent.
     expect(JSON.stringify(fixtures)).not.toContain("test-credential");
   });
+  it.each(["Select every proposal you want to approve.", "Choose the proposals to approve."])("accepts explicit proposal selection in an imperative form: %s", prompt => {
+    expect(() => assertAmbiguousReplyUnresolved({ cards: [{ id: "a", status: "pending" }, { id: "b", status: "pending" },
+      { id: "question", kind: "ask_user_questions", status: "pending", createdByAgentId: "agent", originCommentIds: ["reply"],
+        payload: { questions: [{ prompt, options: [{ label: "Welcome note" }, { label: "Poster" }] }] } }],
+      originalIds: ["a", "b"], tasks: [], reply: "", agentId: "agent", answerId: "reply" })).not.toThrow();
+  });
+  it("rejects an imperative about fonts even with named proposal options", () => {
+    expect(() => assertAmbiguousReplyUnresolved({ cards: [{ id: "a", status: "pending" }, { id: "b", status: "pending" },
+      { id: "question", kind: "ask_user_questions", status: "pending", createdByAgentId: "agent", originCommentIds: ["reply"],
+        payload: { questions: [{ prompt: "Select every font you want to approve.", options: [{ label: "Welcome note" }, { label: "Poster" }] }] } }],
+      originalIds: ["a", "b"], tasks: [], reply: "", agentId: "agent", answerId: "reply" })).toThrow();
+  });
+
   it("selects exactly twelve explicit-only cases using production native profiles", () => {
     const cells = runnerMatrix.filter(e => e.suite.id === "confirmation-replies");
     expect(cells).toHaveLength(12);

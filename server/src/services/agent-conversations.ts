@@ -204,6 +204,38 @@ export async function prepareConversationTurn(
           ),
         );
     }
+    // An answer to a historical question references its original user message.
+    // Keep that provenance, but do not mistake already answered later messages
+    // for new work. Only advance through a successful, durably answered turn in
+    // this same session; queued, failed, or response-less turns do not qualify.
+    if (context.interactionKind === "ask_user_questions" && context.interactionStatus === "answered"
+      && typeof context.interactionId === "string" && typeof context.conversationReplyBoundaryCommentId !== "string") {
+      const [answered] = await tx.select({ id: issueThreadInteractions.id }).from(issueThreadInteractions).where(and(
+        eq(issueThreadInteractions.id, context.interactionId), eq(issueThreadInteractions.companyId, run.companyId),
+        eq(issueThreadInteractions.issueId, issueId), eq(issueThreadInteractions.kind, "ask_user_questions"),
+        eq(issueThreadInteractions.status, "answered"),
+      ));
+      if (answered) {
+        const [handled] = await tx.select({ id: issueComments.id }).from(issueComments)
+          .innerJoin(heartbeatRuns, sql`${issueComments.id}::text = coalesce(
+            ${heartbeatRuns.contextSnapshot}->>'conversationReplyBoundaryCommentId',
+            ${heartbeatRuns.contextSnapshot}->>'wakeCommentId', ${heartbeatRuns.contextSnapshot}->>'commentId')`)
+          .where(and(eq(issueComments.companyId, run.companyId), eq(issueComments.issueId, issueId),
+            isNull(issueComments.deletedAt), isNull(issueComments.createdByRunId), sql`${issueComments.authorUserId} is not null`,
+            eq(heartbeatRuns.companyId, run.companyId), eq(heartbeatRuns.agentId, issue.conversationAgentId!),
+            eq(heartbeatRuns.status, "succeeded"), sql`${heartbeatRuns.contextSnapshot}->>'issueId' = ${issueId}`,
+            comment ? sql`(${issueComments.createdAt}, ${issueComments.id}) >= (select cursor.created_at, cursor.id from issue_comments cursor where cursor.id = ${comment.id}::uuid)` : undefined,
+            sql`${heartbeatRuns.contextSnapshot}->>'conversationSessionGeneration' = ${String(generation)}`,
+            sql`(exists (select 1 from issue_comments reply where reply.company_id = ${run.companyId}::uuid
+              and reply.issue_id = ${issueId}::uuid and reply.created_by_run_id = ${heartbeatRuns.id}
+              and reply.author_agent_id = ${issue.conversationAgentId}::uuid and reply.deleted_at is null)
+              or exists (select 1 from issue_thread_interactions question where question.company_id = ${run.companyId}::uuid
+                and question.issue_id = ${issueId}::uuid and question.source_run_id = ${heartbeatRuns.id}
+                and question.created_by_agent_id = ${issue.conversationAgentId}::uuid))`,
+          )).orderBy(desc(issueComments.createdAt), desc(issueComments.id)).limit(1);
+        context.conversationReplyBoundaryCommentId = handled?.id ?? commentId;
+      }
+    }
     await tx
       .update(issues)
       .set({
@@ -283,9 +315,11 @@ export async function settleConversationTurn(
     // Messages arriving during the reply remain actionable, including the
     // crash window between their comment commit and wake enqueue.
     const wakeId =
-      typeof context.wakeCommentId === "string"
-        ? context.wakeCommentId
-        : context.commentId;
+      typeof context.conversationReplyBoundaryCommentId === "string"
+        ? context.conversationReplyBoundaryCommentId
+        : typeof context.wakeCommentId === "string"
+          ? context.wakeCommentId
+          : context.commentId;
     const [wake] =
       typeof wakeId === "string"
         ? await tx
