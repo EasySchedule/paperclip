@@ -1773,3 +1773,39 @@ omit the already-rejected export, clear stale repair notices, and finalize the
 accepted result without another provider turn, even when its old sandbox is
 unavailable. Preserve current ownership and newer-work fences. See
 `native-workspace-finalization-recovery.md`.
+
+## GitHub-synced skill sources
+
+- Sources and entries are company-scoped. Reuse GitHub connection grants and credential
+  refresh; every provider read authorizes the current caller. Saved connection IDs do
+  not confer access to another user's token. Agent reads use managed run identities.
+- The import picker searches the deduplicated union of repositories from all connections
+  the caller can access, automatically choosing an authorized connection. Adding accounts
+  uses the standard GitHub setup in Apps and retains the import draft. Repository URLs
+  use the default branch; `/tree/<branch>` URLs select a branch, including slash-containing
+  names, without a separate branch or credential selector.
+- Discover every `SKILL.md`, including hidden/deep directories. Resolve the tracking
+  ref to an immutable commit once per operation. Truncated recursive trees require
+  complete subtree traversal or a failed scan. Symlinks and submodules are reported,
+  never traversed; nested skill roots are independent package boundaries.
+- Stage and audit complete packages before publishing. Scripts are allowed through
+  the existing content audit and never run on import. Persist binary bytes and executable
+  flags in immutable version inventories (legacy entries default to UTF-8/non-executable).
+- Refresh is serialized per source, checks saved selection revisions, and publishes
+  valid skills plus per-entry outcomes with required activity records in one transaction.
+  Failed packages retain prior versions; access/scan/download failures retain all content.
+  Record attempted and successful refresh times separately.
+- Match by repository identity and exact path. Preserve IDs, keys, assignments, folders,
+  and history. New key collisions cannot overwrite unrelated skills. Only changed package
+  bytes or executable modes create versions. Library reads, tests, and subsequent unpinned
+  runs use local installed snapshots; pinned/active runs retain their versions.
+- Additions require reviewed selection, with new candidates checked by default and
+  explicit folder exclusions retained. Upstream deletion keeps installed content with
+  removed status; moves are removal plus discovery. Deselect/disconnect retains content
+  and assignments. Originals are read-only, with the existing independent fork workflow.
+- Adopt recognizable existing GitHub imports without provider calls or content changes;
+  resolve missing repository IDs and full snapshots on successful refresh. Exclude bundled,
+  catalog, local/project, skills.sh, and unsupported hosts. Existing GitHub import and update
+  endpoints delegate to sources while retaining response shapes.
+- GitHub.com, manual refresh only. No upstream editing, polling, webhook sync, commits,
+  or pull-request creation in this milestone.

@@ -3,6 +3,8 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hoistModuleGraph } from "./helpers/hoist-module-graph.js";
 
+const mockSkillSourceService = vi.hoisted(() => ({ sourceForSkill: vi.fn(), importFromUrl: vi.fn() }));
+
 const mockAgentService = vi.hoisted(() => ({
   getById: vi.fn(),
 }));
@@ -131,6 +133,7 @@ function denySkillPolicy(action = "skills.import") {
 }
 
 function registerModuleMocks() {
+  vi.doMock("../services/skill-sources.js", () => ({ skillSourceService: () => mockSkillSourceService }));
   vi.doMock("../routes/authz.js", async () => vi.importActual("../routes/authz.js"));
 
   vi.doMock("@paperclipai/shared/telemetry", () => ({
@@ -147,6 +150,8 @@ function registerModuleMocks() {
   }));
 
   vi.doMock("../services/activity-log.js", () => ({
+    persistActivity: vi.fn(),
+    publishActivity: vi.fn(),
     logActivity: mockLogActivity,
   }));
 
@@ -220,6 +225,8 @@ describe("company skill mutation permissions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSkillSourceService.sourceForSkill.mockResolvedValue(null);
+    mockSkillSourceService.importFromUrl.mockImplementation((companyId, source) => mockCompanySkillService.importFromSource(companyId, source));
     mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
     mockCompanySkillService.importFromSource.mockResolvedValue({
       imported: [],
@@ -1355,6 +1362,35 @@ describe("company skill mutation permissions", () => {
       sourceType: "github",
       skillRef: "vercel-labs/agent-browser/find-skills",
     });
+  });
+
+  it("rejects cross-company source reads and mutations for board users and agents", async () => {
+    for (const actor of [
+      { type: "board", userId: "member", companyIds: ["company-1"], isInstanceAdmin: true, source: "session" },
+      { type: "agent", agentId: "agent-1", companyId: "company-1" },
+    ]) {
+      const app = createApp(actor);
+      const base = "/api/companies/company-2/skill-sources";
+      const responses = await Promise.all([
+        request(app).get(base), request(app).get(`${base}/repositories`), request(app).get(`${base}/source-id`),
+        request(app).post(`${base}/discover`).send({ repositoryUrl: "https://github.com/acme/skills" }),
+        request(app).post(base).send({ repositoryUrl: "https://github.com/acme/skills", commitSha: "a".repeat(40), selectedPaths: [] }),
+        request(app).patch(`${base}/source-id`).send({ revision: 0, selectedPaths: [], excludedFolders: [] }),
+        request(app).post(`${base}/source-id/refresh`), request(app).delete(`${base}/source-id`),
+      ]);
+      for (const response of responses) expect(response.status).toBe(403);
+    }
+    expect(mockCompanySkillService.importFromSource).not.toHaveBeenCalled();
+  });
+
+  it("omits source-managed repository identities from import telemetry", async () => {
+    mockCompanySkillService.importFromSource.mockResolvedValue({ imported: [{
+      sourceType: "github", key: "github/private-repo/private-skill-name", slug: "private-skill-name",
+      metadata: { hostname: "github.com", skillSourceId: "source-1" },
+    }], warnings: [] });
+    await request(createApp({ type: "board", userId: "local-board", companyIds: ["company-1"], source: "local_implicit" }))
+      .post("/api/companies/company-1/skills/import").send({ source: "https://github.com/acme/private" }).expect(201);
+    expect(mockTrackSkillImported).toHaveBeenCalledWith(expect.anything(), { sourceType: "github", skillRef: null });
   });
 
   it("does not expose a skill reference for non-public skill imports", async () => {

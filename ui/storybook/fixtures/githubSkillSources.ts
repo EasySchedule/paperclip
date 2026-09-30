@@ -1,0 +1,202 @@
+import { parseGitHubSkillRepositoryUrl } from "@paperclipai/shared";
+import type { AgentDesiredSkillEntry, CompanySkillDetail, CompanySkillListItem, CompanySkillVersion, CompanySkill, SkillSource, SkillSourceCandidate, SkillSourceEntry, SkillSourceRefreshResult } from "@paperclipai/shared";
+import { companySkillsApi } from "@/api/companySkills";
+import { agentsApi } from "@/api/agents";
+import { foldersApi } from "@/api/folders";
+import { storybookAgents } from "./paperclipData";
+import { skillSourcesApi } from "@/api/skillSources";
+
+export const COMPANY_ID = "company-storybook";
+export const SOURCE_ID = "source-team-skills";
+export const COMMIT = "a17d36c9e4521f06b932ac670854d1293f24bc18";
+export const candidates: SkillSourceCandidate[] = [
+  { path: "SKILL.md", name: "Team handbook", description: "Shared conventions and context for every agent.", fileCount: 3, error: null, warnings: [] },
+  { path: ".agents/skills/review/SKILL.md", name: "Code review", description: "Review changes for correctness, security, and maintainability.", fileCount: 5, error: null, warnings: [] },
+  { path: ".agents/skills/review/security/SKILL.md", name: "Security review", description: "Inspect authentication and company boundaries. Includes reference material and scripts.", fileCount: 7, error: null, warnings: [] },
+  { path: "skills/research/SKILL.md", name: "Research", description: "Gather primary sources and turn findings into a concise brief.", fileCount: 4, error: null, warnings: [] },
+  { path: "experimental/deploy/SKILL.md", name: "Deploy preview", description: null, fileCount: 2, error: "Missing required description in SKILL.md frontmatter.", warnings: [] },
+];
+
+export function sourceFixture(): SkillSource {
+  return {
+    id: SOURCE_ID, companyId: COMPANY_ID, repositoryId: "123456",
+    repositoryUrl: "https://github.com/acme/team-skills", fullName: "acme/team-skills",
+    trackingRef: "main", connectionId: "github-storybook", excludedFolders: ["experimental"],
+    enabled: true, revision: 1, lastAttemptAt: new Date(), lastSuccessAt: new Date(),
+    lastScanCommit: COMMIT, lastError: null,
+    entries: candidates.map((candidate, index) => ({
+      id: `entry-${index}`, sourceId: SOURCE_ID, path: candidate.path, name: candidate.name,
+      description: candidate.description, error: candidate.error, present: true,
+      skillId: index < 2 ? `skill-${index}` : null,
+      selection: index < 2 ? "selected" : index === 4 ? "excluded" : "new",
+    })),
+  };
+}
+
+export function importedSkill(source: SkillSource, entry: SkillSourceEntry): CompanySkill {
+  return {
+    id: entry.skillId!, companyId: COMPANY_ID, key: `github/${source.id}/${entry.path}`,
+    slug: entry.name.toLowerCase().replaceAll(" ", "-"), name: entry.name, description: entry.description,
+    markdown: `---\nname: ${entry.name}\ndescription: ${entry.description}\n---\n\n# ${entry.name}\n\n${entry.description}\n\n## Workflow\n\n1. Read the task and the relevant project context.\n2. Follow the checklist in references/checklist.md.\n3. Report findings with evidence and clear next steps.\n`, sourceType: "github", sourceLocator: source.repositoryUrl, sourceRef: COMMIT,
+    trustLevel: "assets", compatibility: "compatible", fileInventory: [{ path: "SKILL.md", kind: "skill" }, { path: "references/checklist.md", kind: "reference" }],
+    iconUrl: null, color: null, tagline: null, authorName: null, homepageUrl: null,
+    categories: [], sharingScope: "company", publicShareToken: null, forkedFromSkillId: null,
+    forkedFromCompanyId: null, starCount: 0, installCount: 0, forkCount: 0,
+    currentVersionId: `version-${entry.id}`, metadata: { skillSourceId: source.id, skillSourcePath: entry.path, skillSourceState: "synced" }, createdAt: new Date(), updatedAt: new Date(),
+  };
+}
+
+export type RepositoryScenario = 'single' | 'multiple' | 'none' | 'empty' | 'partial-error' | 'error' | 'loading';
+
+/** Scoped API fixtures keep the production page interactive without contacting GitHub. */
+export function installFixtures(empty: boolean, needsConnection: boolean, options: { journey?: boolean; refreshed?: boolean; assigned?: boolean; repositories?: RepositoryScenario } = {}) {
+  const original = { ...skillSourcesApi };
+  const sources = empty ? [] : [sourceFixture()];
+  const originalSkills = { ...companySkillsApi };
+  const originalAgents = { ...agentsApi };
+  const originalFolders = { ...foldersApi };
+  const discoveryCandidates = options.journey ? candidates.filter(candidate => !candidate.path.includes('/security/')) : candidates;
+  const assigned = new Map<string, AgentDesiredSkillEntry[]>();
+  const demoAgents = storybookAgents.slice(0, 3).map(agent => ({ ...agent, adapterType: 'codex_local' }));
+  if (options.journey && sources[0]) {
+    sources[0].entries = sources[0].entries.filter(entry => options.refreshed || !entry.path.includes('/security/')).map(entry => ({
+      ...entry,
+      skillId: entry.error || entry.path.includes('/security/') ? null : `skill-${entry.id}`,
+      selection: entry.error ? 'excluded' : entry.path.includes('/security/') ? 'new' : 'selected',
+    }));
+  }
+  const sourceSkills = () => sources.flatMap(source => source.entries.filter(entry => entry.skillId).map(entry => importedSkill(source, entry)));
+  if (options.assigned && demoAgents[0]) {
+    const review = sourceSkills().find(skill => skill.slug === 'code-review');
+    if (review) assigned.set(demoAgents[0].id, [{ key: review.key, versionId: null }]);
+  }
+  function detail(id: string): CompanySkillDetail {
+    const skill = sourceSkills().find(skill => skill.id === id);
+    if (!skill) throw new Error('This skill is not installed in the preview.');
+    const usedByAgents = demoAgents.filter(agent => assigned.get(agent.id)?.some(entry => entry.key === skill.key)).map(agent => ({
+      id: agent.id, name: agent.name, urlKey: agent.urlKey, adapterType: agent.adapterType,
+      desired: true, actualState: null, versionId: assigned.get(agent.id)?.find(entry => entry.key === skill.key)?.versionId ?? null,
+    }));
+    return { ...skill, attachedAgentCount: usedByAgents.length, usedByAgents, existingForks: [], editable: false,
+      editableReason: 'This skill is synced from GitHub. Make a copy to edit it.', sourceLabel: 'GitHub', sourceBadge: 'github',
+      sourcePath: String(skill.metadata?.skillSourcePath), currentVersion: version(skill), starredByCurrentActor: false };
+  }
+  function version(skill: CompanySkill): CompanySkillVersion {
+    return { id: skill.currentVersionId!, companyId: COMPANY_ID, companySkillId: skill.id, revisionNumber: 1,
+      label: null, releaseId: null, releaseName: null, releasedAt: null, authorAgentId: null, authorUserId: 'user-board', createdAt: skill.createdAt,
+      fileInventory: [{ path: 'SKILL.md', kind: 'skill', content: skill.markdown }, { path: 'references/checklist.md', kind: 'reference', content: '# Checklist\n\n- Check company boundaries.\n- Verify failure handling.\n- Include evidence in the review.' }],
+    };
+  }
+  if (options.journey) {
+    companySkillsApi.list = async () => sourceSkills().map(skill => ({ ...detail(skill.id), catalogKind: null, originHash: null, packageName: null, packageVersion: null } satisfies CompanySkillListItem));
+    companySkillsApi.detail = async (_companyId, id) => detail(id);
+    companySkillsApi.categories = async () => [];
+    companySkillsApi.catalogList = async () => [];
+    companySkillsApi.versions = async (_companyId, id) => [version(detail(id))];
+    companySkillsApi.file = async (_companyId, id, path) => ({ skillId: id, path, kind: path === 'SKILL.md' ? 'skill' : 'reference',
+      content: version(detail(id)).fileInventory.find(file => file.path === path)?.content ?? '', language: 'markdown', markdown: true, editable: false });
+    companySkillsApi.updateStatus = async () => ({ supported: true, reason: null, trackingRef: 'main', currentRef: COMMIT, latestRef: COMMIT,
+      hasUpdate: false, installedHash: null, originHash: null, userModifiedAt: null, updateHoldReason: null, auditVerdict: null, auditCodes: [] });
+    companySkillsApi.comments = async () => [];
+    companySkillsApi.testInputs = async () => [];
+    companySkillsApi.testRuns = async () => [];
+    companySkillsApi.testRunTemplates = async () => [];
+    companySkillsApi.forkPrecheck = async (_companyId, id) => {
+      const skill = detail(id);
+      return { skillId: id, original: { id, name: skill.name, slug: skill.slug, sourceType: skill.sourceType, sourceLocator: skill.sourceLocator, sourceRef: skill.sourceRef }, agentUsageCount: skill.attachedAgentCount, usedByAgents: skill.usedByAgents, existingForks: [] };
+    };
+    foldersApi.list = async () => ({ kind: 'skill', folders: [], allCount: sourceSkills().length, unfiledCount: sourceSkills().length });
+    agentsApi.list = async () => structuredClone(demoAgents);
+    agentsApi.skills = async id => ({ adapterType: 'codex_local', supported: true, mode: 'persistent', desiredSkills: (assigned.get(id) ?? []).map(entry => entry.key), desiredSkillEntries: assigned.get(id) ?? [], entries: [], warnings: [] });
+    agentsApi.syncSkills = async (id, entries) => {
+      assigned.set(id, entries.map(entry => typeof entry === 'string' ? { key: entry, versionId: null } : entry));
+      return agentsApi.skills(id);
+    };
+  }
+  if (needsConnection && sources[0]) sources[0].lastError = "GitHub access is no longer available. Reconnect GitHub or choose another connection.";
+  function save(source: SkillSource, selectedPaths: string[], excludedFolders: string[]): SkillSourceRefreshResult {
+    const imported: CompanySkill[] = [];
+    const warnings: string[] = [];
+    let unchanged = 0;
+    source.entries = source.entries.map(entry => {
+      const selected = selectedPaths.includes(entry.path);
+      const next: SkillSourceEntry = { ...entry, selection: selected ? "selected" : "excluded" };
+      if (selected && entry.error) warnings.push(`${entry.path}: ${entry.error}`);
+      else if (selected && !entry.skillId) {
+        next.skillId = `skill-${entry.id}`;
+        imported.push(importedSkill(source, next));
+      } else if (selected) unchanged++;
+      return next;
+    });
+    Object.assign(source, { excludedFolders, enabled: true, revision: source.revision + 1, lastAttemptAt: new Date(), lastSuccessAt: new Date(), lastError: null });
+    return structuredClone({ source, imported, updated: [], unchanged, warnings });
+  }
+  skillSourcesApi.list = async () => structuredClone(sources);
+  const repositoryScenario = options.repositories ?? 'single';
+  skillSourcesApi.repositories = async () => {
+    if (repositoryScenario === 'loading') return new Promise(() => {});
+    if (repositoryScenario === 'error') throw new Error('GitHub is temporarily unavailable. Try again.');
+    const personal = { id: 'github-storybook', name: 'My GitHub account' };
+    const shared = { id: 'github-acme', name: 'Acme engineering' };
+    const connections = repositoryScenario === 'none' ? [] : repositoryScenario === 'multiple' || repositoryScenario === 'partial-error' ? [personal, shared] : [personal];
+    const repo = (id: string, fullName: string, privateRepo: boolean, accounts = [personal]) => ({
+      id, fullName, private: privateRepo, url: `https://github.com/${fullName}`,
+      connections: accounts.map(account => account.name), connectionIds: accounts.map(account => account.id),
+    });
+    return {
+      connections, connectionCount: connections.length, failedConnectionCount: repositoryScenario === 'partial-error' ? 1 : 0,
+      repositories: ['none', 'empty'].includes(repositoryScenario) ? [] : repositoryScenario === 'multiple' ? [
+        repo('234567', 'acme/agent-playbooks', true, [shared]),
+        repo('345678', 'acme/design-system', false, [shared]),
+        repo('456789', 'acme/engineering', true, [shared]),
+        // One row even though two authorized connections can access this repository.
+        repo('123456', 'acme/team-skills', true, [personal, shared]),
+        repo('567890', 'maya/research-skills', false),
+        repo('678901', 'maya/writing-tools', true),
+      ] : [repo('123456', 'acme/team-skills', true)],
+    };
+  };
+  skillSourcesApi.discover = async (_companyId, input) => {
+    const parsed = parseGitHubSkillRepositoryUrl(input.repositoryUrl);
+    if (!parsed) throw new Error('Enter an HTTPS GitHub repository or branch URL.');
+    return {
+      repositoryId: '123456', repositoryUrl: parsed.repositoryUrl, fullName: parsed.fullName,
+      trackingRef: input.trackingRef || parsed.trackingRef || 'main', commitSha: COMMIT, candidates: discoveryCandidates, warnings: [],
+    };
+  };
+  skillSourcesApi.create = async (_companyId, input) => {
+    const source = sourceFixture();
+    Object.assign(source, { id: `source-${sources.length + 1}`, repositoryUrl: input.repositoryUrl, fullName: input.repositoryUrl.replace("https://github.com/", ""), trackingRef: input.trackingRef || "main", connectionId: input.connectionId ?? null });
+    source.entries = source.entries.filter(entry => discoveryCandidates.some(candidate => candidate.path === entry.path)).map(entry => ({ ...entry, sourceId: source.id, skillId: null }));
+    sources.push(source);
+    return save(source, input.selectedPaths, input.excludedFolders ?? []);
+  };
+  skillSourcesApi.select = async (_companyId, id, input) => {
+    const source = sources.find(item => item.id === id)!;
+    source.connectionId = input.connectionId ?? null;
+    return save(source, input.selectedPaths, input.excludedFolders);
+  };
+  skillSourcesApi.refresh = async (_companyId, id) => {
+    const source = sources.find(item => item.id === id)!;
+    if (needsConnection) throw new Error(source.lastError ?? "Reconnect GitHub to refresh this source.");
+    if (options.journey && !source.entries.some(entry => entry.path.includes('/security/'))) {
+      source.entries.push({ ...sourceFixture().entries[2]!, sourceId: source.id });
+      source.revision++;
+    }
+    source.lastAttemptAt = new Date();
+    source.lastSuccessAt = new Date();
+    return structuredClone({ source, imported: [], updated: [], unchanged: source.entries.filter(entry => entry.selection === "selected").length, warnings: [] });
+  };
+  skillSourcesApi.disconnect = async (_companyId, id) => {
+    const source = sources.find(item => item.id === id)!;
+    source.enabled = false;
+    return structuredClone(source);
+  };
+  return () => {
+    Object.assign(skillSourcesApi, original);
+    Object.assign(companySkillsApi, originalSkills);
+    Object.assign(agentsApi, originalAgents);
+    Object.assign(foldersApi, originalFolders);
+  };
+}
+

@@ -1,4 +1,8 @@
 export const queryKeys = {
+  skillSources: {
+    all: (companyId: string) => ["skill-sources", companyId] as const,
+    repositories: (companyId: string) => ["skill-source-repositories", companyId] as const,
+  },
   agentChats: {
     list: (companyId: string | null, userId?: string | null) =>
       ["agent-chats", companyId, userId] as const,

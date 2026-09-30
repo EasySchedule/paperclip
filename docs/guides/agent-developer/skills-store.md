@@ -63,10 +63,10 @@ its contents require. The level is **derived from the files**, not self-declared
 | `assets` | Markdown plus images/PDFs/other static files | No executable code |
 | `scripts_executables` | Any script (`.sh`, `.js`, `.py`, `.ts`, …) | Highest scrutiny |
 
-Trust level gates what can be imported. A skill that carries executable scripts **cannot
-be imported from an external source** (GitHub, `skills.sh`, or a raw URL) — only
-first-party bundled catalog skills are allowed to ship scripts. This keeps untrusted
-remote code out of your agents' hands.
+GitHub sources support scripts after the existing content audit passes. Importing
+never executes scripts, hooks, dependency installers, or builds. Raw URL and
+`skills.sh` imports retain their existing script restrictions. Unsafe content,
+secrets, invalid paths, and oversized files are still rejected.
 
 ## Where skills come from (source types)
 
@@ -81,10 +81,9 @@ A skill in your company library records where it originated. The Store shows thi
 | `url` | URL | Imported from a raw markdown URL |
 | `local_path` | Local | Created in-app or scanned from a project workspace on disk |
 
-External imports (`github`, `skills_sh`, `url`) are held to two rules: they must be
-`markdown_only` or `assets` (no scripts), and Git-backed sources **must resolve to a
-pinned 40-character commit SHA** before import, so a moving branch can never silently
-change what your agents run.
+Git-backed sources **must resolve to a pinned 40-character commit SHA** before
+import. A moving branch cannot change what agents run until you refresh its source.
+GitHub originals are read-only; use **Make a copy** to edit an independent local skill.
 
 ### Thin wrappers for external live playbooks
 
@@ -118,6 +117,65 @@ upstream catalog skill has changed.
 - API: `POST /companies/:companyId/skills/install-catalog`
 - Re-installing an already-installed catalog skill updates it in place rather than
   creating a duplicate.
+
+### Sync skills from GitHub
+
+Open **Skills → Sources → Import from GitHub** (also in the **New** menu), choose a connected repository or
+click **… or add public repo by URL** to paste a GitHub.com repository URL, then choose **Find skills**. The searchable list
+combines repositories from all GitHub connections you can access, with duplicates
+removed. Paperclip automatically uses an authorized connection for the chosen
+repository. Public repositories outside the list can use anonymous access.
+
+A repository URL uses the default branch. Paste a branch URL such as
+`https://github.com/owner/repo/tree/feature/new-skills` to track another branch,
+including branches whose names contain slashes. **Add repos**
+opens the standard setup in Apps; your import draft is retained when you return.
+Use the refresh button beside the repository count to reload accessible repositories.
+
+The searchable folder tree starts with every discovered `SKILL.md` checked, including
+hidden and deeply nested directories. Empty folder chains share a compact row; hover
+a skill name to see its full path and description. Folder checkboxes select their descendants;
+each nested skill is a separate package. Selected skills bring their references,
+scripts, and binary assets with them. Validation errors appear beside affected
+skills; eligible selections import and skipped skills are reported. These skills
+become available in the current company's library and agent skill picker. Files are
+limited to 1 MiB each and a scan to 100 MiB of downloaded content; importing never
+runs scripts, hooks, dependency installation, or builds.
+
+**Skills → Sources** shows repositories, tracking branches, imported counts, last
+refresh times, and connection errors. **Refresh** applies valid updates immediately.
+New skills wait for **Manage skills → Save selection** before import. Previously
+declined skills stay unchecked, including additions beneath excluded folders.
+
+Unchecking an installed skill stops future syncing and keeps its content and agent
+assignments. **Disconnect source** does the same for the whole repository. Remove
+an installed skill separately if you want it gone from the library. Upstream deletion
+shows **Removed from source** and retains the installed version; a moved path is a
+new skill, not an inferred rename.
+
+Installed content is stored locally, so viewing, testing, and agent execution work
+without GitHub access. Updates preserve skill identity, organization, assignments,
+and history. New versions are created only when package bytes or executable modes
+change; active runs and pinned versions keep their existing content. Skill Studio
+can view and test originals. **Make a copy** creates an independent editable skill.
+
+Recognizable older GitHub imports are adopted into Sources without refetching or
+changing content; the first successful refresh completes their local snapshots.
+Bundled/catalog, project/local, unsupported-host, and `skills.sh` imports keep their
+existing behavior. Sync is manual and GitHub.com-only; upstream editing and pull
+requests are not part of this milestone.
+
+Source APIs live beneath `/api/companies/:companyId/skill-sources`:
+
+| Method/path | Purpose |
+|---|---|
+| `GET /` and `GET /:sourceId` | List sources and entries |
+| `GET /repositories` | Browse repositories through existing GitHub grants |
+| `POST /discover` | Discover and validate packages at one commit |
+| `POST /` | Import selected packages at the discovered commit |
+| `PATCH /:sourceId` | Save selection/exclusions and optional connection, with revision check |
+| `POST /:sourceId/refresh` | Refresh selected skills; discover new ones for review |
+| `DELETE /:sourceId` | Disconnect while retaining installed skills |
 
 ### Import from an external source
 

@@ -101,6 +101,15 @@ const support = await getEmbeddedPostgresTestSupport();
     expect(result.repositories.find((repo) => repo.id === "10")?.connections.sort()).toEqual(["personal", "shared"]);
     expect(JSON.stringify(result)).not.toContain("secret-provider-error");
     expect(request).toHaveBeenCalledTimes(3);
+    const savedConnections = await db.select().from(toolConnections).where(eq(toolConnections.companyId, companyId));
+    const ownConnection = savedConnections.find(connection => connection.name === "personal")!;
+    expect(await toolAccessService(db).githubReadHeaders(companyId, ownConnection.id, "alice")).toEqual({ Authorization: `Bearer ${personal}` });
+    for (const name of ["other-person", "restricted"]) {
+      await expect(toolAccessService(db).githubReadHeaders(companyId, savedConnections.find(connection => connection.name === name)!.id, "alice")).rejects.toThrow(/authorization/);
+    }
+    await expect(toolAccessService(db).githubReadHeaders(otherCompany.id, ownConnection.id, "alice", true)).rejects.toThrow(/unavailable/);
+    await db.update(connectionGrants).set({ status: "revoked" }).where(eq(connectionGrants.connectionId, ownConnection.id));
+    await expect(toolAccessService(db).githubReadHeaders(companyId, ownConnection.id, "alice")).rejects.toThrow(/authorization/);
     const revokedMembership = await db.update(companyMemberships).set({ status: "inactive" }).where(eq(companyMemberships.principalId, "alice")).returning();
     expect(revokedMembership).toHaveLength(1);
     expect((await toolAccessService(db).listProjectRepositories(companyId, "alice")).repositories).toEqual([]);

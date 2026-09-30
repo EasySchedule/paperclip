@@ -17229,7 +17229,36 @@ export function toolAccessService(
 
     // Repository discovery uses credential audiences, not connection-management
     // visibility. An administrator cannot browse another user's private repos.
-    listProjectRepositories: async (
+    listProjectRepositories: async (companyId: string, userId: string | null, localTrusted = false) =>
+      toolAccessService(db).listGitHubRepositories(companyId, userId, localTrusted),
+
+    // Server-side reads share the same grant audience and credential lifecycle as discovery.
+    githubReadHeaders: async (companyId: string, connectionId: string, userId: string | null, localTrusted = false, forceRefresh = false): Promise<Record<string, string>> => {
+      const [connection] = await db.select().from(toolConnections).where(and(eq(toolConnections.companyId, companyId), eq(toolConnections.id, connectionId)));
+      if (!connection || !connection.enabled || connection.status !== "active" || asRecord(connection.config).sourceTemplateKey !== "github") {
+        throw forbidden("GitHub connection is unavailable. Choose a connection you can use.");
+      }
+      const [membership] = userId ? await db.select().from(companyMemberships).where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.principalId, userId), eq(companyMemberships.principalType, "user"), eq(companyMemberships.status, "active"))) : [];
+      if (!localTrusted && (!membership || membership.membershipRole === "viewer")) throw forbidden("GitHub access requires an active company member.");
+      const grants = await db.select().from(connectionGrants).where(and(eq(connectionGrants.companyId, companyId), eq(connectionGrants.connectionId, connectionId)));
+      const members = await db.select().from(connectionGrantMembers).where(eq(connectionGrantMembers.companyId, companyId));
+      const allowed = grants.filter(grant => !(grant.kind === "organization" && ["per_user", "per_agent"].includes(connection.credentialPolicy)) && canBrowseProjectRepositoryGrant({
+        grant, userId, activeMember: localTrusted || Boolean(membership), audience: members.filter(member => member.grantId === grant.id).map(member => member.subjectId),
+      }));
+      const actor: ActorInfo = { actorType: "user", actorId: userId ?? "board" };
+      if (!grants.length && connection.credentialPolicy === "shared") return resolveCredentialHeaders(connection, actor);
+      if (allowed.length !== 1) throw forbidden("Choose a GitHub connection with one active authorization you can use.");
+      let grant = allowed[0]!;
+      if (asRecord(asRecord(connection.config).oauth).connectorProfile === "github.code") {
+        grant = await refreshOAuthGrantCredentials({ companyId, connectionId, grantId: grant.id, actor, forceRefresh });
+      }
+      const ref = grant.credentialSecretRefs.find(ref => ref.configPath === "oauth.access_token" || /authorization|token|api_key/i.test(ref.configPath));
+      if (!ref) throw unprocessable("Reconnect GitHub to read repository files.");
+      const secret = await resolveOAuthGrantSecret(connection, grant, ref, actor, undefined);
+      return { Authorization: `Bearer ${secret.value}` };
+    },
+
+    listGitHubRepositories: async (
       companyId: string,
       userId: string | null,
       localTrusted = false,
@@ -17270,6 +17299,7 @@ export function toolAccessService(
         string,
         import("@paperclipai/shared").ProjectRepository
       >();
+      const usableConnections: Array<{ id: string; name: string }> = [];
       let connectionCount = 0;
       let failedConnectionCount = 0;
       for (const connection of connections) {
@@ -17304,6 +17334,7 @@ export function toolAccessService(
           (localTrusted || (!!userId && memberships.length > 0));
         if (!availableGrants.length && !legacyShared) continue;
         connectionCount += 1;
+        usableConnections.push({ id: connection.id, name: connection.name });
         const actor: ActorInfo = {
           actorType: "user",
           actorId: userId ?? "board",
@@ -17352,7 +17383,7 @@ export function toolAccessService(
               rows = await loadGitHubTokenRepositories(headers);
             }
             for (const row of rows) {
-              mergeProjectRepository(repositories, row, connection.name);
+              mergeProjectRepository(repositories, row, connection.name, connection.id);
             }
           } catch {
             // Credential/provider errors may contain secrets. Only expose an
@@ -17366,6 +17397,7 @@ export function toolAccessService(
         repositories: [...repositories.values()].sort((a, b) =>
           a.fullName.localeCompare(b.fullName),
         ),
+        connections: usableConnections,
         connectionCount,
         failedConnectionCount,
       };
