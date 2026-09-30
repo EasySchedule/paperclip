@@ -129,7 +129,8 @@ repository. Public repositories outside the list can use anonymous access.
 A repository URL uses the default branch. Paste a branch URL such as
 `https://github.com/owner/repo/tree/feature/new-skills` to track another branch,
 including branches whose names contain slashes. **Add repos**
-opens the standard setup in Apps; your import draft is retained when you return.
+opens the standard setup in Apps. Completing or cancelling setup returns you to
+the importer with your draft retained; the repository list refreshes automatically.
 Use the refresh button beside the repository count to reload accessible repositories.
 
 The searchable folder tree starts with every discovered `SKILL.md` checked, including

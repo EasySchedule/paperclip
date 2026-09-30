@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SkillSourceTree, type SkillTreeCandidate } from './skills/SkillSourceTree';
 import { timeAgo } from '@/lib/timeAgo';
+import { consumeSkillSourceReturn, rememberSkillSourceReturn } from '@/lib/skill-source-connect-return';
 
 const sourceKey = (companyId: string) => queryKeys.skillSources.all(companyId);
 function resultMessage(result: SkillSourceRefreshResult) {
@@ -104,6 +105,8 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
   const availableConnectionId = connectionId && matchingConnectionIds.includes(connectionId) ? connectionId : matchingConnectionIds[0] ?? null;
   const sourceConnectionId = availableConnectionId ?? source?.connectionId ?? null;
   const connectHref = appSourceConnectHref('github');
+  const rememberReturn = () => rememberSkillSourceReturn(companyId, source?.id ?? 'new');
+  useEffect(() => { consumeSkillSourceReturn(companyId); }, [companyId]);
   useEffect(() => { sessionStorage.setItem(draftKey, JSON.stringify({ revision: selectionRevision, repositoryUrl, showRepositoryUrl, connectionId, discovery, selectedPaths: [...selected], excludedFolders })); }, [draftKey, selectionRevision, repositoryUrl, showRepositoryUrl, connectionId, discovery, selected, excludedFolders]);
   const scan = useMutation({ mutationFn: async () => ({
     discovery: await skillSourcesApi.discover(companyId, { repositoryUrl, connectionId: availableConnectionId }),
@@ -135,7 +138,7 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
               <span className="text-xs text-muted-foreground">{availableRepositories.length} {availableRepositories.length === 1 ? 'repository' : 'repositories'}</span>
               <Button type="button" variant="ghost" size="icon-xs" aria-label="Refresh repositories" title="Refresh repositories" disabled={busy || repositories.isFetching} onClick={() => void repositories.refetch()}><RefreshCw className={repositories.isFetching ? 'size-3 animate-spin' : 'size-3'} /></Button>
             </div>
-            <Button asChild variant="outline" size="sm"><Link to={connectHref}><Plus className="size-4" />Add repos</Link></Button>
+            <Button asChild variant="outline" size="sm"><Link onClick={rememberReturn} to={connectHref}><Plus className="size-4" />Add repos</Link></Button>
           </div>}
           {repositories.isPending && <p role="status" className="text-sm text-muted-foreground">Loading your GitHub repositories…</p>}
           {availableRepositories.length > 0 && <Command className="h-auto border border-border" label="Source repositories">
@@ -161,7 +164,7 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
             <Link to="/apps" className="underline">Manage connections</Link>
           </p>}
           {!repositories.isPending && availableRepositories.length === 0 && <Button asChild variant="outline" className="h-28 w-full flex-col gap-3 whitespace-normal text-center">
-            <Link to={connectHref}><GithubIcon className="size-6" />Connect GitHub to see your repos</Link>
+            <Link onClick={rememberReturn} to={connectHref}><GithubIcon className="size-6" />Connect GitHub to see your repos</Link>
           </Button>}
           <Button type="button" variant="link" size="sm" className="h-auto self-end p-0 text-xs font-normal text-muted-foreground underline" disabled={busy} aria-expanded={showRepositoryUrl} aria-controls="source-repository-url" onClick={() => setShowRepositoryUrl(true)}>... or add public repo by URL</Button>
         </div>
@@ -172,11 +175,11 @@ function SourceDialog({ companyId, source, onClose, onSaved }: {
         <span className="inline-flex items-center gap-1.5"><GitBranch className="size-3.5" /><span className="font-mono">{source?.trackingRef ?? discovery?.trackingRef}</span></span>
         <a href={source?.repositoryUrl ?? discovery?.repositoryUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">View on GitHub<ExternalLink className="size-3" /></a>
       </div>}
-      {source?.lastError && <p role="alert" className="text-sm text-destructive">{source.lastError}{' '}<Link to={source.connectionId ? `/apps/${source.connectionId}/permissions` : connectHref} className="underline">Manage GitHub connection</Link></p>}
+      {source?.lastError && <p role="alert" className="text-sm text-destructive">{source.lastError}{' '}<Link onClick={rememberReturn} to={source.connectionId ? `/apps/${source.connectionId}/permissions` : connectHref} className="underline">Manage GitHub connection</Link></p>}
       {ready && <SkillSourceTree candidates={candidates} selected={selected} excludedFolders={excludedFolders} onChange={(paths, folders) => { setSelected(paths); setExcludedFolders(folders); }} disabled={busy} />}
       {discovery?.warnings.map(warning => <p key={warning} className="text-xs text-muted-foreground">{warning}</p>)}
       {skippedCount > 0 && <p className="text-sm text-muted-foreground">{skippedCount} selected {skippedCount === 1 ? 'skill has' : 'skills have'} validation errors and will be skipped.</p>}
-      {error && <p role="alert" className="text-sm text-destructive">{error.message}{' '}<Link to={connectHref} className="underline">Connect a GitHub account</Link></p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error.message}{' '}<Link onClick={rememberReturn} to={connectHref} className="underline">Connect a GitHub account</Link></p>}
       {scan.isPending && <p role="status" className="text-sm text-muted-foreground">Finding skills throughout the repository and checking their files…</p>}
       {save.isPending && <p role="status" className="text-sm text-muted-foreground">Importing skills and saving your selection…</p>}
       <footer className="flex items-center justify-between gap-3 border-t border-border pt-4">
