@@ -1746,13 +1746,14 @@ export async function prepareGitHubOperationLaunchers(input: {
     // touched PATH alone. Setting a caller's `count` or `inherited` and then
     // unsetting it would stop a command started by that shell from receiving the
     // value the caller exported. A subshell has its own variable scope, so the
-    // caller keeps every variable it had and only PATH changes.
+    // caller keeps every variable it had and only PATH changes. The names below
+    // are therefore free to be short.
     'PATH="$(',
     `  launcher_directory=${shellQuote(directory)}`,
     `  fallback_path=${shellQuote(managedPath)}`,
     "  inherited=${PATH-}",
     '  if [ -z "$inherited" ]; then',
-    "    printf '%s' \"$fallback_path\"",
+    "    result=$fallback_path",
     "  else",
     // Append a delimiter so the loop also sees a trailing empty entry, and count
     // the survivors separately from `kept` so that a kept-but-empty entry and no
@@ -1768,10 +1769,18 @@ export async function prepareGitHubOperationLaunchers(input: {
     '        if [ "$count" -eq 1 ]; then kept=$entry; else kept=$kept:$entry; fi',
     "      fi",
     "    done",
-    "    if [ \"$count\" -eq 0 ]; then printf '%s' \"$launcher_directory\"",
-    "    else printf '%s' \"$launcher_directory:$kept\"; fi",
+    '    if [ "$count" -eq 0 ]; then result=$launcher_directory',
+    "    else result=$launcher_directory:$kept; fi",
     "  fi",
+    // A command substitution strips trailing newlines from what it captures, so a
+    // PATH whose last directory name ends in a newline would come back shortened
+    // and would then name a different directory than the caller put there. Print a
+    // trailing sentinel so any real trailing newline is no longer last, then drop
+    // the sentinel below. A PATH may legitimately contain a newline, because a
+    // directory name may contain one.
+    "  printf '%s.' \"$result\"",
     ')"',
+    "PATH=${PATH%?}",
     // A subshell that is interrupted reports nothing, and an empty PATH would leave
     // the shell with no search path at all. Fall back to the managed snapshot.
     `if [ -z "$PATH" ]; then PATH=${shellQuote(managedPath)}; fi`,

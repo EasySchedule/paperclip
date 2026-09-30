@@ -403,6 +403,24 @@ describe("managed GitHub launcher environment", () => {
     ]);
   });
 
+  it("keeps a PATH whose last directory name ends in a newline", async () => {
+    const fixture = await sandbox("usr/bin");
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-trailing-newline", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    // A directory name may contain a newline, so a PATH entry may end in one. A
+    // command substitution strips trailing newlines from what it captures, so the
+    // profile has to guard the value it captures. Without the guard the entry
+    // comes back one character short and names a different directory, and a tool
+    // in the caller's directory can no longer be found.
+    const launcher = env.PAPERCLIP_GITHUB_LAUNCHER_DIR;
+    const result = await fixture.runner.execute({ command: "/bin/sh", args: ["-c", '. "$BASH_ENV"; printf "%s" "$PATH"'],
+      env: { HOME: fixture.root, PATH: "/usr/bin:usr\n", BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR } });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`${launcher}:/usr/bin:usr\n`);
+  });
+
   it("preserves an explicit remote PATH without querying the remote environment", async () => {
     const fixture = await sandbox("custom/bin");
     const env = await prepareGitHubOperationLaunchers({
