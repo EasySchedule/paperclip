@@ -448,6 +448,38 @@ describe("managed GitHub launcher environment", () => {
     }
   });
 
+  it("gives an empty PATH the managed snapshot and stays stable when a readonly variable collides", async () => {
+    const fixture = await sandbox("usr/bin");
+    const env = await prepareGitHubOperationLaunchers({
+      runId: "run-readonly-fallback", target: fixture.target, cwd: fixture.root,
+      env: githubBrokerEnvironment({}, { url: "", token: "" }),
+    });
+    // The collision fallback must not invent an empty entry. A trailing colon on
+    // PATH means "search the current directory", so a plain prepend of an empty
+    // PATH would add that and drop the system directories the managed snapshot
+    // carries. A login shell can also read more than one staged profile, so the
+    // fallback has to be stable when the profile is read again.
+    const launcher = env.PAPERCLIP_GITHUB_LAUNCHER_DIR;
+
+    const empty = await fixture.runner.execute({
+      command: "/bin/sh",
+      args: ["-c", 'readonly kept=caller-kept\n. "$BASH_ENV"\nprintf \'%s\' "$PATH"'],
+      env: { HOME: fixture.root, PATH: "", BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR },
+    });
+    expect(empty.exitCode, empty.stderr).toBe(0);
+    expect(empty.stdout).toBe(env.PATH);
+
+    for (const reads of [2, 3]) {
+      const repeated = await fixture.runner.execute({
+        command: "/bin/sh",
+        args: ["-c", `readonly kept=caller-kept\n${'. "$BASH_ENV"\n'.repeat(reads)}printf '%s' "$PATH"`],
+        env: { HOME: fixture.root, PATH: "/opt/x:/usr/bin:/bin", BASH_ENV: env.BASH_ENV, ZDOTDIR: env.ZDOTDIR },
+      });
+      expect(repeated.exitCode, repeated.stderr).toBe(0);
+      expect(repeated.stdout, `${reads} reads`).toBe(`${launcher}:/opt/x:/usr/bin:/bin`);
+    }
+  });
+
   it("preserves an explicit remote PATH without querying the remote environment", async () => {
     const fixture = await sandbox("custom/bin");
     const env = await prepareGitHubOperationLaunchers({

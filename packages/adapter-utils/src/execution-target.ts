@@ -1758,7 +1758,11 @@ export async function prepareGitHubOperationLaunchers(input: {
     // caller's own values are untouched either way.
     "  if ( kept=x; count=x; rest=x; entry=x ) 2>/dev/null; then",
     '    if [ -z "$PATH" ]; then',
-    `      printf '%s' ${shellQuote(managedPath)}`,
+    // Each branch below prints its own trailing '.' and PATH drops it below, so
+    // that a real trailing newline in a PATH is not the last character and a
+    // command substitution cannot strip it. A PATH may hold a newline, because a
+    // directory name may hold one.
+    `      printf '%s.' ${shellQuote(managedPath)}`,
     "    else",
     // Append a delimiter so the walk also sees a trailing empty entry, and count
     // the survivors separately from `kept` so that a kept-but-empty entry and no
@@ -1774,23 +1778,21 @@ export async function prepareGitHubOperationLaunchers(input: {
     '          if [ "$count" -eq 1 ]; then kept=$entry; else kept=$kept:$entry; fi',
     "        fi",
     "      done",
-    `      if [ "$count" -eq 0 ]; then printf '%s' ${shellQuote(directory)}`,
-    `      else printf '%s:%s' ${shellQuote(directory)} "$kept"; fi`,
+    `      if [ "$count" -eq 0 ]; then printf '%s.' ${shellQuote(directory)}`,
+    `      else printf '%s:%s.' ${shellQuote(directory)} "$kept"; fi`,
     "    fi",
     "  else",
-    // The walk cannot run, so keep it to the one job that must never fail: put the
-    // launcher first and leave every entry the caller had in place. This can leave
-    // an earlier copy of the launcher directory behind, which a later read of the
-    // profile would remove anyway.
-    `    printf '%s:%s' ${shellQuote(directory)} "$PATH"`,
+    // The walk cannot run, and no name is available to run it with. Match on PATH
+    // itself, which needs no name. An empty PATH gets the managed snapshot, a PATH
+    // that already starts with the launcher directory is returned unchanged, and
+    // any other PATH gets one prepend. Returning the launcher-first PATH unchanged
+    // is what keeps repeated reads from growing it.
+    "    case $PATH in",
+    `      '') printf '%s.' ${shellQuote(managedPath)} ;;`,
+    `      ${shellQuote(directory)}|${shellQuote(directory)}:*) printf '%s.' "$PATH" ;;`,
+    `      *) printf '%s:%s.' ${shellQuote(directory)} "$PATH" ;;`,
+    "    esac",
     "  fi",
-    // A command substitution strips trailing newlines from what it captures, so a
-    // PATH whose last directory name ends in a newline would come back shortened
-    // and would then name a different directory than the caller put there. Print a
-    // trailing sentinel so any real trailing newline is no longer last, then drop
-    // the sentinel below. A PATH may legitimately contain a newline, because a
-    // directory name may contain one.
-    "  printf '%s.' ''",
     ')"',
     "PATH=${PATH%?}",
     // A subshell that is interrupted reports nothing, and an empty PATH would leave
