@@ -1728,13 +1728,35 @@ export async function prepareGitHubOperationLaunchers(input: {
   const managedPath = basePath ? `${directory}:${basePath}` : directory;
   // Login shells may reorder PATH through /etc/profile or path_helper. Restore
   // the managed launchers after startup without loading a host user's profile.
+  // Only prepend them. The caller owns the rest of PATH: a tool such as a
+  // package runner adds its own node_modules/.bin entry and then execs a shell,
+  // and replacing PATH would delete it. Remove an earlier copy of the launcher
+  // directory instead of collecting one per source, because a login shell reads
+  // more than one staged profile. An empty PATH is not a caller choice, so fall
+  // back to the managed snapshot. This matches github-launcher.ts, which keeps
+  // originalPath and filters out its own directory.
+  const prependLauncherPath = [
+    `launcher_directory=${shellQuote(directory)}`,
+    `fallback_path=${shellQuote(managedPath)}`,
+    "rest=${PATH-}",
+    "kept=",
+    'while [ -n "$rest" ]; do',
+    '  entry=${rest%%:*}',
+    '  case $rest in *:*) rest=${rest#*:} ;; *) rest= ;; esac',
+    '  [ "$entry" = "$launcher_directory" ] || kept=${kept:+"$kept:"}$entry',
+    "done",
+    'if [ -n "$kept" ]; then export PATH="$launcher_directory:$kept"; else export PATH="$fallback_path"; fi',
+    "unset launcher_directory fallback_path rest entry kept",
+  ].join("\n");
   // Empty merge overrides clear host identity before launch, but Git treats
   // them as an explicit empty author. Remove them once the shell has inherited
   // its final environment; preserve nonempty per-operation identity values.
   const clearEmptyGitIdentity = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]
     .map((key) => `if [ -z "\${${key}-}" ]; then unset ${key}; fi\n`)
     .join("");
-  const profile = `export PATH=${shellQuote(managedPath)}\n${clearEmptyGitIdentity}`;
+  // A process environment keeps the session-start snapshot; only a shell profile
+  // has to reconcile itself with the PATH it inherited.
+  const profile = `${prependLauncherPath}\n${clearEmptyGitIdentity}`;
   const files: Record<string, string> = Object.fromEntries([
     // Remote launchers live beneath the checkout. Pin their own package scope
     // so an enclosing project's "type": "module" cannot reinterpret require().
